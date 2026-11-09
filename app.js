@@ -338,7 +338,7 @@
     var app = $('app');
     if (!S.ses) { app.innerHTML = vLogin(); return; }
     S.calc = C.calcular(S.estado);
-    app.innerHTML = vTop() + vBandas() + '<main>' + vista() + '</main>' + vTabs() + '<div class="pie">Almacén de aceros · versión de prueba · Autor: Carlos Eduardo Bermúdez Castro</div>';
+    app.innerHTML = '<div class="cab">' + vTop() + vTabs() + '</div>' + vBandas() + '<main>' + vista() + '</main><div class="pie">Almacén de aceros · versión de prueba · Autor: Carlos Eduardo Bermúdez Castro</div>';
   }
 
   // ---------- Acciones ----------

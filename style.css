@@ -7,7 +7,7 @@
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+body { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 h1, h2, h3 { margin: 0; line-height: 1.2; }
 h2 { font-size: 1.05rem; margin-bottom: 10px; }
 h3 { font-size: .95rem; }
@@ -97,11 +97,12 @@ details summary { cursor: pointer; color: var(--mut); font-size: .88rem; padding
 input.mini { width: 90px; padding: 6px 8px; text-align: right; }
 
 /* Pestañas inferiores */
-.tabs { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--line); display: flex; padding-bottom: env(safe-area-inset-bottom); z-index: 30; }
+.cab { position: sticky; top: 0; z-index: 30; }
+.cab .top { position: static; }
+.tabs { background: #fff; border-bottom: 1px solid var(--line); display: flex; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
 .tabs button { flex: 1; border: 0; background: transparent; padding: 9px 2px 8px; color: var(--mut); font-size: .72rem; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .tabs button span { font-size: 1.35rem; line-height: 1; }
 .tabs button.on { color: var(--acc2); font-weight: 700; }
-@media (min-width: 900px) { body { padding-bottom: 20px; } .tabs { position: static; max-width: 1000px; margin: 12px auto 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; } }
 
 /* Ingreso */
 .login { max-width: 400px; margin: 8vh auto; padding: 0 16px; }
