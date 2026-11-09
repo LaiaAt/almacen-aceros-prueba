@@ -152,8 +152,9 @@
     rows.forEach((r) => { if (r.aviso) avisos.push('Marca ' + r.marca + ': ' + r.aviso); });
 
     // Peso total que declara el propio DLI (cabecera) → control cruzado
-    const mp = /PREFERENCIAS DIBUJOS(?:\s+-?[\d.]+){13}\s+([\d.]+)/.exec(s.slice(0, 1500));
-    const kgDLI = mp ? parseFloat(mp[1]) : null;
+    // (el DLI reparte su peso en varias casillas de la cabecera: se suman)
+    const mp = /PREFERENCIAS DIBUJOS((?:\s+-?[\d.]+)+)/.exec(s.slice(0, 1500));
+    const kgDLI = mp ? r2(mp[1].trim().split(/\s+/).slice(4, 20).map(Number).filter((x) => x > 1).reduce((t, x) => t + x, 0)) || null : null;
     const kgApp = totales(rows).totalKg;
     if (kgDLI && Math.abs(kgApp - kgDLI) / kgDLI > 0.005 && !rows.some((r) => r.aviso)) avisos.push('El peso calculado (' + kgApp + ' kg) difiere del declarado en el DLI (' + kgDLI + ' kg).');
     return { archivo: nombreArchivo || '', nombre, kgDLI, descripcion, empresa, proyecto, declarado, rows, avisos, ...totales(rows) };
