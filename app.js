@@ -231,53 +231,54 @@
     if (!S.estado.entradas.length) return sinInventario();
     ajustarSalida();
     var s = S.sal, todas = todasElems(), conSaldo = elemsDisp();
-    var h = '<div class="card sal"><h2>¿Qué acero sale hoy?</h2>';
+    var h = '<div class="card sal"><h2>Registrar salida de acero</h2>';
     if (!conSaldo.length && !s.items.length) return h + '<div class="vacio">No queda acero disponible en el almacén.</div></div>';
-    h += '<div class="fgrid">' +
+    // Paso 1: cuándo y de dónde
+    h += '<section class="paso"><div class="paso-h"><i>1</i><b>Fecha y estructura</b></div><div class="fgrid">' +
       '<div class="fld"><label for="s-fecha">Fecha</label><input id="s-fecha" type="date" max="' + hoyISO() + '" value="' + esc(s.fecha || hoyISO()) + '" data-i="sal.fecha"></div>' +
       '<div class="fld"><label for="s-hora">Hora</label><input id="s-hora" type="text" readonly tabindex="-1" value="' + horaAhora() + '"></div>' +
       '<div class="fld" style="grid-column: 1 / -1"><label for="s-elem">Estructura</label><select id="s-elem" data-f="sal.elem">' + (s.elem ? '' : '<option value="">Elija la estructura…</option>') +
         todas.map(function (e) {
           var pz = S.calc.porElem[e] ? S.calc.porElem[e].sal_p : 0, ped = {};
           S.estado.pedidos.forEach(function (p) { if (p.estructura === e) ped[p.pedido] = 1; });
-          return '<option value="' + esc(e) + '"' + (e === s.elem ? ' selected' : '') + (pz > 0 || e === s.elem ? '' : ' disabled') + '>' + esc(e) + ' · pedido ' + esc(Object.keys(ped).join(', ')) + ' · ' + (pz > 0 ? n0(pz) + ' pzs' : 'sin saldo') + '</option>'; }).join('') + '</select></div></div>';
-    if (!s.elem) { h += '<div class="vacio-s" style="margin-top:14px">Elija la estructura para ver las piezas.</div>'; }
-    else {
+          return '<option value="' + esc(e) + '"' + (e === s.elem ? ' selected' : '') + (pz > 0 || e === s.elem ? '' : ' disabled') + '>' + esc(e) + ' · pedido ' + esc(Object.keys(ped).join(', ')) + ' · ' + (pz > 0 ? n0(pz) + ' pzs' : 'sin saldo') + '</option>'; }).join('') + '</select></div></div></section>';
+    if (s.elem) {
       var todasP = piezasSalida(s.elem), diams = [];
       todasP.forEach(function (p) { if (diams.indexOf(p.diam) < 0) diams.push(p.diam); });
       var q = String(s.q || '').trim().toLowerCase().replace(',', '.');
       var lista = todasP.filter(function (p) {
+        if (p.disp <= 0) return false;
         if (s.fdiam && p.diam !== s.fdiam) return false;
-        if (!q) return true;
         return p.marca.toLowerCase().indexOf(q) >= 0 || (p.largo && p.largo.toFixed(2).indexOf(q) === 0);
       });
-      var maxL = todasP.reduce(function (a, p) { return Math.max(a, p.largo || 0); }, 0) || 1;
-      h += '<div class="busq"><input id="s-q" type="search" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Buscar: 4.06, 2a o largo 3.30" value="' + esc(s.q) + '" data-i="sal.q"></div>';
-      if (diams.length > 1) h += '<div class="fch"><button type="button" class="fc' + (!s.fdiam ? ' on' : '') + '" data-a="fdiam" data-v="">Todas</button>' + diams.map(function (d) { return '<button type="button" class="fc' + (s.fdiam === d ? ' on' : '') + '" data-a="fdiam" data-v="' + esc(d) + '">' + esc(C.diamLabel(d)) + '</button>'; }).join('') + '</div>';
-      if (!q) h += '<div class="vacio-s">Escriba el código de la posición (ej. 4.06, 2a) o el largo para ver las piezas.</div>';
-      else if (!lista.length) h += '<div class="vacio-s">No hay piezas que coincidan con "' + esc(s.q) + '".</div>';
-      else h += '<div class="paso-t">Resultados · elija cuántas sacar</div><div class="rlist">' + lista.map(function (p) {
+      // Paso 2: buscar y agregar
+      h += '<section class="paso"><div class="paso-h"><i>2</i><b>Busque la posición</b></div>' +
+        '<div class="busq"><input id="s-q" type="search" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Escriba la posición. Ej. 4.06 o 2a" value="' + esc(s.q) + '" data-i="sal.q"></div>';
+      if (diams.length > 1) h += '<div class="fch">' + diams.map(function (d) { return '<button type="button" class="fc' + (s.fdiam === d ? ' on' : '') + '" data-a="fdiam" data-v="' + (s.fdiam === d ? '' : esc(d)) + '">' + esc(C.diamLabel(d)) + '</button>'; }).join('') + '</div>';
+      if (!q) h += '<div class="vacio-s">Las posiciones aparecen aquí cuando usted escribe.</div>';
+      else if (!lista.length) h += '<div class="vacio-s">No hay posiciones disponibles que coincidan con “' + esc(s.q) + '”.</div>';
+      else h += '<div class="rlist">' + lista.map(function (p) {
         var a1 = ' data-v="' + esc(p.marca) + '" data-d="' + esc(p.diam) + '"';
-        return '<div class="rr' + (p.en ? ' en' : '') + '"><div class="rr-i"><b>' + esc(p.marca) + '</b><span>' + esc(C.diamLabel(p.diam)) + (p.largo ? ' · ' + p.largo.toFixed(2) + ' m' : '') + ' · ' + (p.disp > 0 ? 'quedan ' + n0(p.disp) : 'sin más') + (p.en ? ' · <em>' + p.en + ' en la salida</em>' : '') + '</span></div>' +
-          '<button type="button" class="b1" data-a="sumar"' + a1 + (p.disp <= 0 ? ' disabled' : '') + '>+1</button>' +
-          '<button type="button" class="bt" data-a="todas"' + a1 + (p.disp <= 0 ? ' disabled' : '') + '>Todas' + (p.disp > 0 ? ' (' + n0(p.disp) + ')' : '') + '</button></div>'; }).join('') + '</div>';
-      if (s.items.length) {
-        h += '<div class="paso-t">En esta salida</div><div class="rlist">' + s.items.map(function (it, ix) {
-          var v = S.calc.porMarca[it.elem + '|' + it.diam + '|' + it.marca], mx = v ? v.sal_p : it.cant, a1 = ' data-v="' + esc(it.marca) + '" data-d="' + esc(it.diam) + '"';
-          return '<div class="rr en"><div class="rr-i"><b>' + esc(it.marca) + '</b><span>' + esc(C.diamLabel(it.diam)) + (it.largo ? ' · ' + it.largo.toFixed(2) + ' m' : '') + ' · ' + kg(it.kg) + ' kg</span></div>' +
-            '<div class="pc-ctl"><button type="button" data-a="restar"' + a1 + ' aria-label="Quitar una">−</button><input class="qn" type="number" inputmode="numeric" min="0" max="' + mx + '" value="' + it.cant + '" data-q="' + ix + '" aria-label="Cantidad"><button type="button" data-a="sumar"' + a1 + ' aria-label="Agregar una"' + (it.cant >= mx ? ' disabled' : '') + '>+</button></div>' +
-            '<button type="button" class="bt" data-a="todas"' + a1 + (it.cant >= mx ? ' disabled' : '') + '>Todas</button>' +
-            '<button type="button" class="bx" data-a="quitar" data-v="' + ix + '" aria-label="Quitar">✕</button></div>'; }).join('') + '</div>';
-      }
+        return '<div class="rr"><div class="rr-i"><b>' + esc(p.marca) + '</b><span>' + esc(C.diamLabel(p.diam)) + (p.largo ? ' · ' + p.largo.toFixed(2) + ' m' : '') + ' · quedan ' + n0(p.disp) + '</span></div>' +
+          '<button type="button" class="b1" data-a="sumar"' + a1 + '>+1</button>' +
+          (p.disp > 1 ? '<button type="button" class="bt" data-a="todas"' + a1 + '>Todas · ' + n0(p.disp) + '</button>' : '') + '</div>'; }).join('') + '</div>';
+      h += '</section>';
     }
-    h += '<details class="mas"><summary>Agregar una nota (opcional)</summary><input id="s-obs" type="text" maxlength="120" placeholder="Ej. losa de fondo, turno noche" value="' + esc(s.obs) + '" data-i="sal.obs"></details>';
+    // Paso 3: lo que sale
+    h += '<section class="paso"><div class="paso-h"><i>3</i><b>Lo que sale</b>' + (s.items.length ? '<button type="button" class="lnk" data-a="vaciar">Vaciar</button>' : '') + '</div>';
+    if (!s.items.length) h += '<div class="vacio-s">Todavía no ha agregado piezas.</div>';
+    else h += '<div class="rlist">' + s.items.map(function (it, ix) {
+      var v = S.calc.porMarca[it.elem + '|' + it.diam + '|' + it.marca], mx = v ? v.sal_p : it.cant, a1 = ' data-v="' + esc(it.marca) + '" data-d="' + esc(it.diam) + '"';
+      return '<div class="rr en"><div class="rr-i"><b>' + esc(it.marca) + '</b><span>' + esc(C.diamLabel(it.diam)) + (it.largo ? ' · ' + it.largo.toFixed(2) + ' m' : '') + ' · ' + kg(it.kg) + ' kg</span></div>' +
+        '<div class="pc-ctl"><button type="button" data-a="restar"' + a1 + ' aria-label="Quitar una">−</button><input class="qn" type="number" inputmode="numeric" min="0" max="' + mx + '" value="' + it.cant + '" data-q="' + ix + '" aria-label="Cantidad"><button type="button" data-a="sumar"' + a1 + ' aria-label="Agregar una"' + (it.cant >= mx ? ' disabled' : '') + '>+</button></div>' +
+        '<button type="button" class="bx" data-a="quitar" data-v="' + ix + '" aria-label="Quitar">✕</button></div>'; }).join('') + '</div>';
+    h += '<details class="mas"><summary>Agregar una nota (opcional)</summary><input id="s-obs" type="text" maxlength="120" placeholder="Ej. losa de fondo, turno noche" value="' + esc(s.obs) + '" data-i="sal.obs"></details></section>';
     if (s.err) h += '<div class="error">' + esc(s.err) + '</div>';
     var tp = 0, tk = 0; s.items.forEach(function (it) { tp += it.cant; tk += it.kg; });
     h += '<div class="sb-esp"></div><div class="sbar"><div class="sres">' + (s.items.length
-      ? '<b>' + n0(tp) + (tp === 1 ? ' pieza' : ' piezas') + '</b> · ' + kg(tk) + ' kg<small>' + s.items.map(function (it) { return esc(it.pos) + ' ×' + it.cant; }).join(' · ') + '</small>'
-      : '<span class="mut">Aún no ha elegido piezas</span>') + '</div>' +
-      (s.items.length ? '<button type="button" class="btn sec" data-a="vaciar">Vaciar</button>' : '') +
-      '<button type="button" class="btn sacar2" data-a="registrarSalida"' + (s.items.length ? '' : ' disabled') + '>Sacar</button></div>';
+      ? '<b>' + n0(tp) + (tp === 1 ? ' pieza' : ' piezas') + '</b><small>' + kg(tk) + ' kg · ' + s.items.length + (s.items.length === 1 ? ' posición' : ' posiciones') + '</small>'
+      : '<span class="mut">Aún no hay piezas</span>') + '</div>' +
+      '<button type="button" class="btn sacar2" data-a="registrarSalida"' + (s.items.length ? '' : ' disabled') + '>Registrar salida</button></div>';
     return h + '</div>';
   }
 

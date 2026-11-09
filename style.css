@@ -168,3 +168,28 @@ input.mini { width: 90px; padding: 6px 8px; text-align: right; }
 .prog b { display: block; height: 100%; width: 40%; background: var(--acc); border-radius: 3px; animation: prog 1.1s ease-in-out infinite; }
 @keyframes prog { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
 .sal .fgrid { grid-template-columns: 1fr 1fr; } .sal .fld input[readonly] { background: #f2f3f5; color: #444; }
+
+/* Rediseño salida: pasos numerados, filas limpias */
+.sal .paso { margin-top: 18px; }
+.sal .paso-h { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sal .paso-h i { width: 26px; height: 26px; border-radius: 50%; background: var(--acc); color: #fff; font-style: normal; font-weight: 700; font-size: .9rem; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.sal .paso-h b { font-size: 1rem; }
+.sal .paso-h .lnk { margin-left: auto; border: 0; background: none; color: #888; font-size: .9rem; text-decoration: underline; cursor: pointer; padding: 6px; }
+.sal .rlist { gap: 0; margin: 4px 0 0; border: 1px solid #e6e8eb; border-radius: 12px; overflow: hidden; background: #fff; }
+.sal .rr { border: 0; border-radius: 0; border-bottom: 1px solid #eef0f2; padding: 12px 14px; }
+.sal .rr:last-child { border-bottom: 0; }
+.sal .rr.en { background: #fff; }
+.sal .rr .b1 { min-width: 52px; }
+.sal .rr .bt { background: #fff; color: var(--acc2); }
+.sal .rr .bt:active, .sal .rr .b1:active { background: #fff3e8; }
+.sal .vacio-s { padding: 18px 12px; text-align: center; color: #8a8f98; font-size: .92rem; background: #fafbfc; border: 1px dashed #dfe3e8; border-radius: 12px; }
+.sal .sres b { font-size: 1.15rem; } .sal .sres small { display: block; color: #666; font-size: .82rem; }
+.sal .rr, .sal .rr.en { flex-wrap: nowrap; border-color: #eef0f2; gap: 6px; }
+.sal .rr:last-child, .sal .rr.en:last-child { border-bottom: 0; }
+.sal .rr-i { flex: 1 1 0; min-width: 0; }
+.sal .rr-i span { overflow-wrap: anywhere; }
+.sal .rr .pc-ctl button { width: 38px; }
+.sal .qn { width: 44px; }
+.sal .rr .bx { width: 34px; flex: none; }
+.sal .rr .b1, .sal .rr .bt { padding: 0 12px; white-space: nowrap; }
+@media (max-width: 420px) { .sal .rr .bt { padding: 0 9px; font-size: .92rem; } }
