@@ -149,3 +149,16 @@ input.mini { width: 90px; padding: 6px 8px; text-align: right; }
 @media (min-width: 900px) { .sbar { padding-left: calc((100vw - 1000px) / 2 + 16px); padding-right: calc((100vw - 1000px) / 2 + 16px); } }
 .btn:disabled { cursor: not-allowed; }
 .sal .mal { color: var(--bad); }
+
+.sal .rlist { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 14px; }
+.sal .rr { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #fff; border: 1.5px solid var(--line, #e3e3e3); border-radius: 12px; padding: 10px 12px; }
+.sal .rr.en { border-color: var(--acc); background: #fffaf5; }
+.sal .rr-i { flex: 1 1 140px; min-width: 120px; display: flex; flex-direction: column; }
+.sal .rr-i b { font-size: 1.2rem; } .sal .rr-i span { font-size: .85rem; color: #666; } .sal .rr-i em { color: var(--acc2); font-style: normal; font-weight: 600; }
+.sal .rr .b1, .sal .rr .bt { height: 44px; border-radius: 10px; border: 1.5px solid var(--acc); background: #fff; color: var(--acc2); font-weight: 700; font-size: 1rem; padding: 0 14px; cursor: pointer; }
+.sal .rr .bt { background: var(--acc); color: #fff; }
+.sal .rr button:disabled { opacity: .35; }
+.sal .rr .pc-ctl { margin-top: 0; }
+.sal .qn { width: 52px; height: 40px; border: 0; text-align: center; font-size: 1.15rem; font-weight: 700; -moz-appearance: textfield; padding: 0; }
+.sal .qn::-webkit-outer-spin-button, .sal .qn::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.sal .rr .bx { width: 40px; height: 40px; border: 0; background: transparent; font-size: 1.1rem; color: #999; cursor: pointer; }

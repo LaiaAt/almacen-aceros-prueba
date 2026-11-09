@@ -199,6 +199,15 @@
     });
     return ms.sort(function (a, b) { return C.diamOrder(a.diam) - C.diamOrder(b.diam) || cmpMarca(a.marca, b.marca); });
   }
+  function setCant(e, d, m, n) {
+    var s = S.sal, v = S.calc.porMarca[e + '|' + d + '|' + m]; if (!v) return;
+    n = Math.max(0, Math.min(v.sal_p, Math.floor(+n || 0)));
+    var it = s.items.filter(function (x) { return x.elem === e && x.diam === d && x.marca === m; })[0];
+    if (!it && n > 0) { var ent = S.estado.entradas.filter(function (z) { return z.estructura === e && z.diametro === d && z.marca === m; })[0] || {};
+      it = { id: '', largo: ent.largo || 0, elem: e, diam: d, pos: m, marca: m, cant: 0, kg: 0 }; s.items.push(it); }
+    if (it) { it.cant = n; if (n <= 0) s.items.splice(s.items.indexOf(it), 1); else it.kg = C.kgSalida(S.calc, e, d, n, m); }
+    s.err = ''; s.msg = '';
+  }
   function sumarItem(e, d, m, delta) {
     var s = S.sal, it = s.items.filter(function (x) { return x.elem === e && x.diam === d && x.marca === m; })[0];
     var v = S.calc.porMarca[e + '|' + d + '|' + m]; if (!v) return;
@@ -241,16 +250,21 @@
       var maxL = todasP.reduce(function (a, p) { return Math.max(a, p.largo || 0); }, 0) || 1;
       h += '<div class="busq"><input id="s-q" type="search" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Buscar: 4.06, 2a o largo 3.30" value="' + esc(s.q) + '" data-i="sal.q"></div>';
       if (diams.length > 1) h += '<div class="fch"><button type="button" class="fc' + (!s.fdiam ? ' on' : '') + '" data-a="fdiam" data-v="">Todas</button>' + diams.map(function (d) { return '<button type="button" class="fc' + (s.fdiam === d ? ' on' : '') + '" data-a="fdiam" data-v="' + esc(d) + '">' + esc(C.diamLabel(d)) + '</button>'; }).join('') + '</div>';
-      h += '<div class="paso-t">Toque una pieza para agregarla a la salida</div>';
-      if (!lista.length) h += '<div class="vacio-s">No hay piezas que coincidan con "' + esc(s.q) + '".</div>';
-      else h += '<div class="pgrid">' + lista.map(function (p) {
-        var dis = p.disp <= 0;
-        return '<div class="pc' + (p.en ? ' en' : '') + (dis && !p.en ? ' agot' : '') + '"' + (dis ? '' : ' data-a="sumar" data-v="' + esc(p.marca) + '" data-d="' + esc(p.diam) + '"') + '>' +
-          '<div class="pc-c">' + esc(p.marca) + '</div><div class="pc-d">' + esc(C.diamLabel(p.diam)) + (p.largo ? ' · ' + p.largo.toFixed(2) + ' m' : '') + '</div>' +
-          '<div class="pc-b"><i style="width:' + Math.max(6, Math.round(100 * (p.largo || 0) / maxL)) + '%"></i></div>' +
-          '<div class="pc-q">' + (p.disp > 0 ? 'Quedan ' + n0(p.disp) : 'Sin más') + '</div>' +
-          (p.en ? '<div class="pc-ctl"><button type="button" data-a="restar" data-v="' + esc(p.marca) + '" data-d="' + esc(p.diam) + '" aria-label="Quitar una">−</button><b>' + p.en + '</b><button type="button" data-a="sumar" data-v="' + esc(p.marca) + '" data-d="' + esc(p.diam) + '" aria-label="Agregar una"' + (dis ? ' disabled' : '') + '>+</button></div>' : '') +
-          '</div>'; }).join('') + '</div>';
+      if (!q) h += '<div class="vacio-s">Escriba el código de la posición (ej. 4.06, 2a) o el largo para ver las piezas.</div>';
+      else if (!lista.length) h += '<div class="vacio-s">No hay piezas que coincidan con "' + esc(s.q) + '".</div>';
+      else h += '<div class="paso-t">Resultados · elija cuántas sacar</div><div class="rlist">' + lista.map(function (p) {
+        var a1 = ' data-v="' + esc(p.marca) + '" data-d="' + esc(p.diam) + '"';
+        return '<div class="rr' + (p.en ? ' en' : '') + '"><div class="rr-i"><b>' + esc(p.marca) + '</b><span>' + esc(C.diamLabel(p.diam)) + (p.largo ? ' · ' + p.largo.toFixed(2) + ' m' : '') + ' · ' + (p.disp > 0 ? 'quedan ' + n0(p.disp) : 'sin más') + (p.en ? ' · <em>' + p.en + ' en la salida</em>' : '') + '</span></div>' +
+          '<button type="button" class="b1" data-a="sumar"' + a1 + (p.disp <= 0 ? ' disabled' : '') + '>+1</button>' +
+          '<button type="button" class="bt" data-a="todas"' + a1 + (p.disp <= 0 ? ' disabled' : '') + '>Todas' + (p.disp > 0 ? ' (' + n0(p.disp) + ')' : '') + '</button></div>'; }).join('') + '</div>';
+      if (s.items.length) {
+        h += '<div class="paso-t">En esta salida</div><div class="rlist">' + s.items.map(function (it, ix) {
+          var v = S.calc.porMarca[it.elem + '|' + it.diam + '|' + it.marca], mx = v ? v.sal_p : it.cant, a1 = ' data-v="' + esc(it.marca) + '" data-d="' + esc(it.diam) + '"';
+          return '<div class="rr en"><div class="rr-i"><b>' + esc(it.marca) + '</b><span>' + esc(C.diamLabel(it.diam)) + (it.largo ? ' · ' + it.largo.toFixed(2) + ' m' : '') + ' · ' + kg(it.kg) + ' kg</span></div>' +
+            '<div class="pc-ctl"><button type="button" data-a="restar"' + a1 + ' aria-label="Quitar una">−</button><input class="qn" type="number" inputmode="numeric" min="0" max="' + mx + '" value="' + it.cant + '" data-q="' + ix + '" aria-label="Cantidad"><button type="button" data-a="sumar"' + a1 + ' aria-label="Agregar una"' + (it.cant >= mx ? ' disabled' : '') + '>+</button></div>' +
+            '<button type="button" class="bt" data-a="todas"' + a1 + (it.cant >= mx ? ' disabled' : '') + '>Todas</button>' +
+            '<button type="button" class="bx" data-a="quitar" data-v="' + ix + '" aria-label="Quitar">✕</button></div>'; }).join('') + '</div>';
+      }
     }
     h += '<details class="mas"><summary>Agregar una nota (opcional)</summary><input id="s-obs" type="text" maxlength="120" placeholder="Ej. losa de fondo, turno noche" value="' + esc(s.obs) + '" data-i="sal.obs"></details>';
     if (s.err) h += '<div class="error">' + esc(s.err) + '</div>';
@@ -484,6 +498,7 @@
       case 'tab': S.tab = v; render(); window.scrollTo(0, 0); break;
       case 'refrescar': cargarEstado().then(function () { toast('Actualizado'); }); break;
       case 'salir': Api.salir(); S.ses = null; S.loginErr = ''; render(); break;
+      case 'todas': setCant(S.sal.elem, el.getAttribute('data-d'), v, 99999); render(); break;
       case 'quitar': S.sal.items.splice(+v, 1); S.sal.err = ''; render(); break;
       case 'sumar': sumarItem(S.sal.elem, el.getAttribute('data-d'), v, 1); render(); break;
       case 'restar': sumarItem(S.sal.elem, el.getAttribute('data-d'), v, -1); render(); break;
@@ -522,6 +537,8 @@
       S.sal.err = ''; S.sal.msg = '';
       render(); return;
     }
+    var dq = t.getAttribute('data-q');
+    if (dq !== null) { var itq = S.sal.items[+dq]; if (itq) setCant(itq.elem, itq.diam, itq.marca, t.value); render(); return; }
     var lg = t.getAttribute('data-largo');
     if (lg) {
       var ij = lg.split(':'), c = S.cargas[+ij[0]], row = c.parsed.rows[+ij[1]], val = parseFloat(String(t.value).replace(',', '.'));
