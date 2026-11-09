@@ -91,7 +91,7 @@
     },
 
     salida: function (ses, d) {
-      var id = uid('S');
+      var id = d.id || uid('S');
       var marca = d.marca || '';
       if (!remoto) {
         var s = leer(K.local, vacio());

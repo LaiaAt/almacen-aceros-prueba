@@ -5,7 +5,7 @@
 
   var S = {
     ses: null, estado: { pedidos: [], entradas: [], salidas: [] }, calc: null, tab: 'panel', offline: false, enviando: false,
-    sal: { diam: '', elem: '', marca: '', pos: '', cant: 1, obs: '', fecha: '', msg: '', err: '' },
+    sal: { items: [], grupo: '', n: 0, diam: '', elem: '', marca: '', pos: '', cant: 1, obs: '', fecha: '', msg: '', err: '' },
     inv: { vista: 'diametro', elem: '', diam: '' },
     cargas: [], loginErr: '', loginNom: ''
   };
@@ -78,7 +78,13 @@
   function movimientos() {
     var L = [];
     S.estado.pedidos.forEach(function (p) { L.push({ t: 'E', f: p.fecha, p: p }); });
-    S.estado.salidas.forEach(function (s) { L.push({ t: 'S', f: s.fecha, s: s }); });
+    var G = {}, orden = [];
+    S.estado.salidas.forEach(function (s) {
+      var k = String(s.id).replace(/-\d+$/, '');
+      if (!G[k]) { G[k] = []; orden.push(k); }
+      G[k].push(s);
+    });
+    orden.forEach(function (k) { L.push({ t: 'S', f: G[k][0].fecha, s: G[k][0], g: G[k] }); });
     L.sort(function (a, b) { return a.f < b.f ? 1 : a.f > b.f ? -1 : 0; });
     return L;
   }
@@ -88,6 +94,14 @@
       var p = m.p;
       return '<div class="mov"><div class="ic e">+</div><div class="cu"><b>Carga DLI · ' + esc(p.estructura) + '</b><span>Pedido ' + esc(p.pedido) + ' · ' + n0(p.piezas) + ' pzs · ' + kg(p.kg) + ' kg · ' + esc(p.usuario) + ' · ' + fecha(p.fecha) + '</span></div>' +
         (conAcciones && esAdmin() ? '<button class="btn chico sec" data-a="anularCarga" data-v="' + esc(p.loadId) + '">Anular</button>' : '') + '</div>';
+    }
+    if (m.g && m.g.length > 1) {
+      var activas = m.g.filter(function (x) { return x.estado !== 'ANULADA'; }), anG = !activas.length, g0 = m.g[0];
+      var totkg = activas.reduce(function (a, x) { return a + x.kg; }, 0);
+      return '<div class="mov' + (anG ? ' anul' : '') + '"><div class="ic ' + (anG ? 'a' : 's') + '">−</div><div class="cu"><b>Salida · ' + m.g.length + ' líneas' + (anG ? '<span class="tag">anulada</span>' : '') + '</b>' +
+        m.g.map(function (x) { return '<span>' + n0(x.cantidad) + ' × ' + esc(C.diamLabel(x.diametro)) + (x.marca ? ' · pos. ' + esc(x.marca) : '') + ' · ' + esc(x.elemento) + ' · ' + kg(x.kg) + ' kg' + (x.estado === 'ANULADA' && !anG ? ' (anulada)' : '') + '</span>'; }).join('') +
+        '<span><b>' + kg(totkg) + ' kg</b> · ' + esc(g0.usuario) + ' · ' + fecha(g0.fecha) + (g0.obs ? ' · ' + esc(g0.obs) : '') + '</span></div>' +
+        (conAcciones && esAdmin() && !anG && !m.g.some(function (x) { return x.pendiente; }) ? '<button class="btn chico sec" data-a="anularSalida" data-v="' + esc(activas.map(function (x) { return x.id; }).join(',')) + '">Anular todo</button>' : '') + '</div>';
     }
     var s = m.s, an = s.estado === 'ANULADA';
     return '<div class="mov' + (an ? ' anul' : '') + '"><div class="ic ' + (an ? 'a' : 's') + '">−</div><div class="cu"><b>' + n0(s.cantidad) + ' × ' + esc(C.diamLabel(s.diametro)) + ' · ' + esc(s.elemento) +
@@ -158,13 +172,18 @@
   function diamsDeElem(e) {
     return diamsDisponibles().filter(function (d) { var x = S.calc.porElemDiam[e + '|' + d]; return x && x.sal_p > 0; });
   }
+  function enCarrito(e, d, p) {
+    return S.sal.items.reduce(function (a, it) { return a + (it.elem === e && it.diam === d && it.pos === p ? it.cant : 0); }, 0);
+  }
   function infoPos(e, d, p) {
     if (!p) return null;
     var x = S.calc.porMarca[e + '|' + d + '|' + p];
     if (!x) return { ok: false, txt: 'No existe la posición ' + p };
     var ent = S.estado.entradas.filter(function (z) { return z.estructura === e && z.diametro === d && z.marca === p; })[0] || {};
     if (!(x.sal_p > 0)) return { ok: false, txt: 'De la posición ' + p + ' ya no queda nada' };
-    return { ok: true, largo: ent.largo, disp: x.sal_p };
+    var neto = x.sal_p - enCarrito(e, d, p);
+    if (neto <= 0) return { ok: false, txt: 'Ya agregaste todo lo que queda de la posición ' + p };
+    return { ok: true, largo: ent.largo, disp: neto };
   }
   function ajustarSalida() {
     var s = S.sal, es = elemsDisp();
@@ -179,7 +198,7 @@
   }
   function maxSalida() {
     var s = S.sal;
-    return s.elem && s.diam && s.marca ? C.disponible(S.calc, s.elem, s.diam, s.marca).piezas : 0;
+    return s.elem && s.diam && s.marca ? C.disponible(S.calc, s.elem, s.diam, s.marca).piezas - enCarrito(s.elem, s.diam, s.pos) : 0;
   }
   function resumenSalida() {
     var s = S.sal, max = maxSalida();
@@ -191,7 +210,11 @@
     ajustarSalida();
     var s = S.sal, es = elemsDisp();
     var h = '<div class="card"><h2>Sacar acero</h2>';
-    if (!es.length) return h + '<div class="vacio">No queda acero disponible en el almacén.</div></div>';
+    if (s.items.length) {
+      h += '<div class="carro"><b>🧾 En esta salida (' + s.items.length + ')</b>' + s.items.map(function (it, i) {
+        return '<div class="lin"><span><b>Pos. ' + esc(it.pos) + '</b> · ' + n0(it.cant) + ' × ' + esc(C.diamLabel(it.diam)) + '<small>' + esc(it.elem) + ' · ' + kg(it.kg) + ' kg</small></span><button data-a="quitar" data-v="' + i + '" aria-label="Quitar">✕</button></div>'; }).join('') + '</div>';
+    }
+    if (!es.length && !s.items.length) return h + '<div class="vacio">No queda acero disponible en el almacén.</div></div>';
     if (es.length > 1 || !s.elem) {
       h += '<div class="paso">1 · ¿Qué estructura?</div><div class="chips">' + es.map(function (e) {
         return '<button class="chip grande' + (s.elem === e ? ' on' : '') + '" data-a="elem" data-v="' + esc(e) + '"><b>' + esc(e) + '</b></button>'; }).join('') + '</div>';
@@ -216,12 +239,15 @@
         h += '<div class="paso">4 · ¿Cuántas varillas?</div><div class="step"><button data-a="menos" aria-label="Menos">−</button>' +
           '<input id="s-cant" type="number" inputmode="numeric" min="1" max="' + r.max + '" value="' + s.cant + '" data-i="sal.cant"><button data-a="mas" aria-label="Más">+</button></div>' +
           '<div class="resumen"><div><small>Quedan</small><b id="r-disp">' + n0(r.max) + ' pzs</b></div><div class="der"><small>Peso aprox.</small><b id="r-kg">' + kg(r.kg) + ' kg</b></div></div>' +
-          '<details class="mas"><summary>📅 Fecha y nota</summary><label class="f" for="s-fecha">Fecha de salida</label><input id="s-fecha" type="date" max="' + hoyISO() + '" value="' + esc(s.fecha || hoyISO()) + '" data-i="sal.fecha">' +
-          '<label class="f" for="s-obs">Nota (opcional)</label><input id="s-obs" type="text" maxlength="120" placeholder="Ej. losa fondo" value="' + esc(s.obs) + '" data-i="sal.obs"></details>';
-        if (s.err) h += '<div class="error">' + esc(s.err) + '</div>';
-        h += '<button class="btn blk sacar" data-a="registrarSalida">SACAR</button>';
+          '';
+        h += '<button class="btn blk agregar" data-a="agregar">➕ AGREGAR OTRA POSICIÓN</button>';
       }
     }
+    if (s.err) h += '<div class="error">' + esc(s.err) + '</div>';
+    var nEnv = s.items.length + (s.marca ? 1 : 0), nEnvD = nEnv;
+    if (nEnvD) h += '<details class="mas"><summary>📅 Fecha y nota</summary><label class="f" for="s-fecha">Fecha de salida</label><input id="s-fecha" type="date" max="' + hoyISO() + '" value="' + esc(s.fecha || hoyISO()) + '" data-i="sal.fecha">' +
+          '<label class="f" for="s-obs">Nota (opcional)</label><input id="s-obs" type="text" maxlength="120" placeholder="Ej. losa fondo" value="' + esc(s.obs) + '" data-i="sal.obs"></details>';
+    if (nEnv) h += '<button class="btn blk sacar" data-a="registrarSalida">' + (nEnv > 1 ? 'SACAR TODO (' + nEnv + ')' : 'SACAR') + '</button>';
     if (s.msg) h += '<div class="ok">' + esc(s.msg) + '</div>';
     return h + '</div>';
   }
@@ -392,18 +418,47 @@
     });
   }
 
-  function registrarSalida() {
+  function itemActual() {
     var s = S.sal;
-    if (!s.marca) { s.err = 'Escriba el número de la etiqueta.'; s.msg = ''; render(); return; }
-    var err = C.validarSalida(S.calc, s.elem, s.diam, s.cant, s.marca);
-    if (err) { s.err = err; s.msg = ''; render(); return; }
+    return { id: '', elem: s.elem, diam: s.diam, pos: s.pos, marca: s.marca, cant: s.cant, kg: C.kgSalida(S.calc, s.elem, s.diam, s.cant, s.marca) };
+  }
+  function agregarItem() {
+    var s = S.sal;
+    if (!s.marca) { s.err = 'Escriba el número de la etiqueta.'; render(); return; }
+    var it = itemActual();
+    var ya = s.items.filter(function (x) { return x.elem === it.elem && x.diam === it.diam && x.pos === it.pos; })[0];
+    if (ya) { ya.cant += it.cant; ya.kg = C.kgSalida(S.calc, ya.elem, ya.diam, ya.cant, ya.marca); }
+    else s.items.push(it);
+    s.pos = ''; s.marca = ''; s.cant = 1; s.err = ''; s.msg = '';
+    render(); window.scrollTo(0, 0);
+  }
+  function registrarSalida() {
+    var s = S.sal, lista = s.items.slice(), actual = null;
+    if (s.marca) { actual = itemActual(); lista.push(actual); }
+    if (!lista.length) { s.err = 'Escriba el número de la etiqueta.'; s.msg = ''; render(); return; }
+    for (var i = 0; i < lista.length; i++) {
+      var err = C.validarSalida(S.calc, lista[i].elem, lista[i].diam, lista[i].cant, lista[i].marca);
+      if (err) { s.err = 'Posición ' + lista[i].pos + ': ' + err; s.msg = ''; render(); return; }
+    }
     var fch = /^\d{4}-\d\d-\d\d$/.test(s.fecha) ? s.fecha : hoyISO();
     if (fch > hoyISO()) { s.err = 'La fecha de salida no puede ser futura.'; s.msg = ''; render(); return; }
-    var kgEst = C.kgSalida(S.calc, s.elem, s.diam, s.cant, s.marca), cant = s.cant, d = s.diam, e = s.elem;
-    Api.salida(S.ses, { diametro: d, cantidad: cant, elemento: e, marca: s.marca, obs: s.obs, fecha: fch }).then(function (r) {
-      if (!r.ok) { s.err = r.error; s.msg = ''; render(); return; }
-      s.err = ''; s.cant = 1; s.obs = ''; s.marca = ''; s.pos = ''; s.fecha = '';
-      s.msg = 'Salida registrada: ' + cant + ' × ' + C.diamLabel(d) + ' en ' + e + ' (≈ ' + kg(kgEst) + ' kg)' + (r.pendiente ? '. Sin señal: se enviará sola al volver la conexión.' : '.');
+    if (!s.grupo) s.grupo = 'S' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    lista.forEach(function (it) { if (!it.id) it.id = s.grupo + '-' + (++s.n); });
+    var enviadas = 0, pend = false, totKg = 0, fallo = '';
+    lista.reduce(function (pr, it) {
+      return pr.then(function () {
+        if (fallo) return;
+        return Api.salida(S.ses, { id: it.id, diametro: it.diam, cantidad: it.cant, elemento: it.elem, marca: it.marca, obs: s.obs, fecha: fch }).then(function (r) {
+          if (!r.ok) { fallo = 'Posición ' + it.pos + ': ' + r.error; return; }
+          enviadas++; totKg += it.kg; if (r.pendiente) pend = true;
+          s.items = s.items.filter(function (x) { return x !== it; });
+          if (it === actual) { s.pos = ''; s.marca = ''; s.cant = 1; }
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      if (fallo) { s.err = (enviadas ? 'Se registraron ' + enviadas + ' de ' + lista.length + '. ' : '') + fallo; s.msg = ''; return cargarEstado(); }
+      s.err = ''; s.obs = ''; s.fecha = ''; s.grupo = ''; s.n = 0; s.items = [];
+      s.msg = 'Salida registrada: ' + enviadas + (enviadas === 1 ? ' línea' : ' líneas') + ' (≈ ' + kg(totKg) + ' kg)' + (pend ? '. Sin señal: se enviará sola al volver la conexión.' : '.');
       toast('Salida registrada');
       S.tab = 'panel'; window.scrollTo(0, 0);
       return cargarEstado();
@@ -438,6 +493,8 @@
       case 'salir': Api.salir(); S.ses = null; S.loginErr = ''; render(); break;
       case 'elem': S.sal.elem = v; S.sal.diam = ''; S.sal.pos = ''; S.sal.marca = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); break;
       case 'diam': S.sal.diam = v; S.sal.pos = ''; S.sal.marca = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); break;
+      case 'agregar': agregarItem(); break;
+      case 'quitar': S.sal.items.splice(+v, 1); S.sal.err = ''; render(); break;
       case 'tecla': if (S.sal.pos.length < 3) { S.sal.pos = (S.sal.pos + v).replace(/^0+(?=\d)/, ''); S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); } break;
       case 'borrar': S.sal.pos = S.sal.pos.slice(0, -1); S.sal.cant = 1; S.sal.err = ''; render(); break;
       case 'limpiar': S.sal.pos = ''; S.sal.cant = 1; S.sal.err = ''; render(); break;
@@ -451,7 +508,11 @@
       case 'enviarCola': enviarCola(); break;
       case 'limpiarErrores': Api.limpiarErroresCola(); render(); break;
       case 'anularSalida':
-        if (confirm('¿Anular esta salida? El acero vuelve al inventario.')) Api.anularSalida(S.ses, v).then(function (r) { toast(r.ok ? 'Salida anulada' : r.error); return cargarEstado(); });
+        if (confirm('¿Anular esta salida? El acero vuelve al inventario.')) {
+          var ids = String(v).split(','), okT = true, errT = '';
+          ids.reduce(function (pr, id) { return pr.then(function () { return Api.anularSalida(S.ses, id).then(function (r) { if (!r.ok) { okT = false; errT = r.error; } }); }); }, Promise.resolve())
+            .then(function () { toast(okT ? 'Salida anulada' : errT); return cargarEstado(); });
+        }
         break;
       case 'anularCarga':
         if (confirm('¿Anular esta carga de DLI? Se quitan sus piezas del inventario.')) Api.anularCarga(S.ses, v).then(function (r) { toast(r.ok ? 'Carga anulada' : r.error); return cargarEstado(); });

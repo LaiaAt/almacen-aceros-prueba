@@ -130,3 +130,9 @@ input.mini { width: 90px; padding: 6px 8px; text-align: right; }
 .btn.sacar { background: #1f9d55; font-size: 1.6rem; padding: 22px; margin-top: 8px; letter-spacing: 2px; }
 .btn.sacar:active { background: #167a41; }
 details.mas { margin: 8px 0; } details.mas summary { cursor: pointer; color: var(--mut); padding: 8px 0; }
+
+.carro { background: #f4f7fa; border: 2px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 4px 0 10px; }
+.carro .lin { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 1.05rem; }
+.carro .lin small { display: block; color: var(--mut); font-size: .8rem; }
+.carro .lin button { width: 44px; height: 44px; border: 0; border-radius: 12px; background: #fdeeee; color: #a02626; font-size: 1.2rem; cursor: pointer; flex: none; }
+.btn.agregar { background: var(--acero); font-size: 1.1rem; padding: 16px; margin-top: 8px; }
