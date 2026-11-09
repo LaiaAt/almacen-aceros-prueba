@@ -1,7 +1,7 @@
 {
   "name": "Almacén de aceros (prueba)",
   "short_name": "Aceros",
-  "description": "Inventario de acero de refuerzo: entradas desde DLI y salidas por supervisor. Autor: Carlos Eduardo Bermúdez Castro",
+  "description": "Inventario de acero de refuerzo: entradas desde DLI y salidas por supervisor.",
   "lang": "es",
   "start_url": "./index.html",
   "scope": "./",
