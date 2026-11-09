@@ -5,7 +5,7 @@
 
   var S = {
     ses: null, estado: { pedidos: [], entradas: [], salidas: [] }, calc: null, tab: 'panel', offline: false, enviando: false,
-    sal: { diam: '', elem: '', marca: '', cant: 1, obs: '', fecha: '', largo: '', msg: '', err: '' },
+    sal: { diam: '', elem: '', marca: '', pos: '', cant: 1, obs: '', fecha: '', msg: '', err: '' },
     inv: { vista: 'diametro', elem: '', diam: '' },
     cargas: [], loginErr: '', loginNom: ''
   };
@@ -91,7 +91,7 @@
     }
     var s = m.s, an = s.estado === 'ANULADA';
     return '<div class="mov' + (an ? ' anul' : '') + '"><div class="ic ' + (an ? 'a' : 's') + '">−</div><div class="cu"><b>' + n0(s.cantidad) + ' × ' + esc(C.diamLabel(s.diametro)) + ' · ' + esc(s.elemento) +
-      (s.pendiente ? '<span class="tag pend">sin enviar</span>' : '') + (an ? '<span class="tag">anulada</span>' : '') + '</b><span>' + kg(s.kg) + ' kg' + (s.marca ? ' · marca ' + esc(s.marca) : '') + ' · ' + esc(s.usuario) + ' · ' + fecha(s.fecha) + (s.obs ? ' · ' + esc(s.obs) : '') + '</span></div>' +
+      (s.pendiente ? '<span class="tag pend">sin enviar</span>' : '') + (an ? '<span class="tag">anulada</span>' : '') + '</b><span>' + kg(s.kg) + ' kg' + (s.marca ? ' · pos. ' + esc(s.marca) : '') + ' · ' + esc(s.usuario) + ' · ' + fecha(s.fecha) + (s.obs ? ' · ' + esc(s.obs) : '') + '</span></div>' +
       (conAcciones && esAdmin() && !an && !s.pendiente ? '<button class="btn chico sec" data-a="anularSalida" data-v="' + esc(s.id) + '">Anular</button>' : '') + '</div>';
   }
 
@@ -148,62 +148,79 @@
     });
     return r.sort(function (a, b) { return cmpMarca(a.marca, b.marca); });
   }
-  function marcaOpciones(ms, s) {
-    var q = parseFloat(String(s.largo || '').replace(',', '.'));
-    var f = isNaN(q) ? ms : ms.filter(function (m) { return Math.abs((m.largo || 0) - q) < 0.011; });
-    return { lista: f, html: '<option value="">' + (isNaN(q) ? 'Cualquiera' : (f.length ? (f.length === 1 ? '1 coincidencia' : 'Cualquiera de las ' + f.length + ' coincidencias') : 'Sin coincidencias con ' + q + ' m')) + '</option>' +
-      f.map(function (m) { return '<option value="' + esc(m.marca) + '"' + (m.marca === s.marca ? ' selected' : '') + '>' + esc(m.marca) + (m.largo ? ' · ' + m.largo + ' m' : '') + ' · ' + n0(m.disp) + ' disp.</option>'; }).join('') };
+  function elemsDisp() {
+    var r = {};
+    Object.keys(S.calc.porElemDiam).forEach(function (k) {
+      if (S.calc.porElemDiam[k].sal_p > 0) r[k.slice(0, k.lastIndexOf('|'))] = 1;
+    });
+    return Object.keys(r).sort();
+  }
+  function diamsDeElem(e) {
+    return diamsDisponibles().filter(function (d) { var x = S.calc.porElemDiam[e + '|' + d]; return x && x.sal_p > 0; });
+  }
+  function infoPos(e, d, p) {
+    if (!p) return null;
+    var x = S.calc.porMarca[e + '|' + d + '|' + p];
+    if (!x) return { ok: false, txt: 'No existe la posición ' + p };
+    var ent = S.estado.entradas.filter(function (z) { return z.estructura === e && z.diametro === d && z.marca === p; })[0] || {};
+    if (!(x.sal_p > 0)) return { ok: false, txt: 'De la posición ' + p + ' ya no queda nada' };
+    return { ok: true, largo: ent.largo, disp: x.sal_p };
   }
   function ajustarSalida() {
-    var s = S.sal, ds = diamsDisponibles();
-    if (ds.indexOf(s.diam) < 0) { s.diam = ''; s.elem = ''; s.marca = ''; }
-    if (s.diam) {
-      var es = elemsDe(s.diam);
-      if (es.indexOf(s.elem) < 0) s.elem = es.length === 1 ? es[0] : '';
-      if (s.elem && marcasDe(s.elem, s.diam).every(function (m) { return m.marca !== s.marca; })) s.marca = '';
-    }
-    var max = maxSalida();
+    var s = S.sal, es = elemsDisp();
+    if (es.indexOf(s.elem) < 0) s.elem = es.length === 1 ? es[0] : '';
+    var ds = s.elem ? diamsDeElem(s.elem) : [];
+    if (ds.indexOf(s.diam) < 0) s.diam = ds.length === 1 ? ds[0] : '';
+    var inf = s.elem && s.diam ? infoPos(s.elem, s.diam, s.pos) : null;
+    s.marca = inf && inf.ok ? s.pos : '';
+    var max = s.marca ? maxSalida() : 0;
     if (!(s.cant >= 1)) s.cant = 1;
     if (max && s.cant > max) s.cant = max;
   }
   function maxSalida() {
     var s = S.sal;
-    return s.elem && s.diam ? C.disponible(S.calc, s.elem, s.diam, s.marca).piezas : 0;
+    return s.elem && s.diam && s.marca ? C.disponible(S.calc, s.elem, s.diam, s.marca).piezas : 0;
   }
   function resumenSalida() {
     var s = S.sal, max = maxSalida();
-    return { max: max, kg: s.elem && s.diam ? C.kgSalida(S.calc, s.elem, s.diam, s.cant, s.marca) : 0 };
+    return { max: max, kg: s.elem && s.diam && s.marca ? C.kgSalida(S.calc, s.elem, s.diam, s.cant, s.marca) : 0 };
   }
 
   function vSalida() {
     if (!S.estado.entradas.length) return sinInventario();
     ajustarSalida();
-    var s = S.sal, ds = diamsDisponibles();
-    var h = '<div class="card"><h2>Registrar salida de acero</h2>';
-    if (!ds.length) return h + '<div class="vacio">No queda acero disponible en el almacén.</div></div>';
-    h += '<label class="f" style="margin-top:0">1. Tipo de varilla</label><div class="chips">';
-    ds.forEach(function (d) {
-      var x = S.calc.porDiam[d];
-      h += '<button class="chip' + (s.diam === d ? ' on' : '') + '" data-a="diam" data-v="' + esc(d) + '"><b>' + esc(C.diamLabel(d)) + '</b><small>' + n0(x.sal_p) + ' pzs · ' + kg(x.sal_kg) + ' kg</small></button>';
-    });
-    h += '</div>';
-    if (s.diam) {
-      var es = elemsDe(s.diam);
-      h += '<label class="f" for="s-elem">2. Elemento donde se usa</label><select id="s-elem" data-f="sal.elem"><option value="">Seleccione…</option>' +
-        es.map(function (e) { return '<option value="' + esc(e) + '"' + (e === s.elem ? ' selected' : '') + '>' + esc(e) + ' — ' + n0(C.disponible(S.calc, e, s.diam, '').piezas) + ' disp.</option>'; }).join('') + '</select>';
+    var s = S.sal, es = elemsDisp();
+    var h = '<div class="card"><h2>Sacar acero</h2>';
+    if (!es.length) return h + '<div class="vacio">No queda acero disponible en el almacén.</div></div>';
+    if (es.length > 1 || !s.elem) {
+      h += '<div class="paso">1 · ¿Qué estructura?</div><div class="chips">' + es.map(function (e) {
+        return '<button class="chip grande' + (s.elem === e ? ' on' : '') + '" data-a="elem" data-v="' + esc(e) + '"><b>' + esc(e) + '</b></button>'; }).join('') + '</div>';
+    } else h += '<div class="paso">📍 ' + esc(s.elem) + '</div>';
+    if (s.elem) {
+      var ds = diamsDeElem(s.elem);
+      if (ds.length > 1 || !s.diam) {
+        h += '<div class="paso">2 · ¿Qué varilla?</div><div class="chips">' + ds.map(function (d) {
+          return '<button class="chip grande' + (s.diam === d ? ' on' : '') + '" data-a="diam" data-v="' + esc(d) + '"><b>' + esc(C.diamLabel(d)) + '</b></button>'; }).join('') + '</div>';
+      } else h += '<div class="paso">Varilla ' + esc(C.diamLabel(s.diam)) + '</div>';
     }
-    if (s.diam && s.elem) {
-      var ms = marcasDe(s.elem, s.diam);
-      h += '<label class="f" for="s-largo">Largo de la etiqueta en m (opcional)</label><input id="s-largo" type="text" inputmode="decimal" maxlength="6" placeholder="Ej. 3.30" value="' + esc(s.largo) + '" data-i="sal.largo">' +
-        '<label class="f" for="s-marca">Marca (opcional)</label><select id="s-marca" data-f="sal.marca">' + marcaOpciones(ms, s).html + '</select>';
-      var r = resumenSalida();
-      h += '<label class="f">3. Cantidad de varillas</label><div class="step"><button data-a="menos" aria-label="Menos">−</button>' +
-        '<input id="s-cant" type="number" inputmode="numeric" min="1" max="' + r.max + '" value="' + s.cant + '" data-i="sal.cant"><button data-a="mas" aria-label="Más">+</button></div>' +
-        '<div class="resumen"><div><small>Disponible</small><b id="r-disp">' + n0(r.max) + ' pzs</b></div><div class="der"><small>Peso estimado</small><b id="r-kg">' + kg(r.kg) + ' kg</b></div></div>' +
-        '<label class="f" for="s-fecha">Fecha de salida</label><input id="s-fecha" type="date" max="' + hoyISO() + '" value="' + esc(s.fecha || hoyISO()) + '" data-i="sal.fecha">' +
-        '<label class="f" for="s-obs">Observación (opcional)</label><input id="s-obs" type="text" maxlength="120" placeholder="Ej. losa fondo, turno noche" value="' + esc(s.obs) + '" data-i="sal.obs">';
-      if (s.err) h += '<div class="error">' + esc(s.err) + '</div>';
-      h += '<div style="margin-top:14px"><button class="btn blk" data-a="registrarSalida">Registrar salida</button></div>';
+    if (s.elem && s.diam) {
+      var inf = infoPos(s.elem, s.diam, s.pos);
+      h += '<div class="paso">3 · Número de la etiqueta</div><div class="posbox' + (inf ? (inf.ok ? ' bien' : ' mal') : '') + '">' + (s.pos ? esc(s.pos) : '<span>?</span>') + '</div>';
+      h += '<div class="kp">' + ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(function (n) { return '<button data-a="tecla" data-v="' + n + '">' + n + '</button>'; }).join('') +
+        '<button class="sec" data-a="borrar" aria-label="Borrar">⌫</button><button data-a="tecla" data-v="0">0</button><button class="sec" data-a="limpiar" aria-label="Limpiar">✕</button></div>';
+      if (inf) h += inf.ok
+        ? '<div class="conf bien">✅ Posición ' + esc(s.pos) + ' · ' + esc(C.diamLabel(s.diam)) + (inf.largo ? ' · ' + inf.largo + ' m' : '') + '<br><small>Quedan ' + n0(inf.disp) + '</small></div>'
+        : '<div class="conf mal">❌ ' + esc(inf.txt) + '</div>';
+      if (s.marca) {
+        var r = resumenSalida();
+        h += '<div class="paso">4 · ¿Cuántas varillas?</div><div class="step"><button data-a="menos" aria-label="Menos">−</button>' +
+          '<input id="s-cant" type="number" inputmode="numeric" min="1" max="' + r.max + '" value="' + s.cant + '" data-i="sal.cant"><button data-a="mas" aria-label="Más">+</button></div>' +
+          '<div class="resumen"><div><small>Quedan</small><b id="r-disp">' + n0(r.max) + ' pzs</b></div><div class="der"><small>Peso aprox.</small><b id="r-kg">' + kg(r.kg) + ' kg</b></div></div>' +
+          '<details class="mas"><summary>📅 Fecha y nota</summary><label class="f" for="s-fecha">Fecha de salida</label><input id="s-fecha" type="date" max="' + hoyISO() + '" value="' + esc(s.fecha || hoyISO()) + '" data-i="sal.fecha">' +
+          '<label class="f" for="s-obs">Nota (opcional)</label><input id="s-obs" type="text" maxlength="120" placeholder="Ej. losa fondo" value="' + esc(s.obs) + '" data-i="sal.obs"></details>';
+        if (s.err) h += '<div class="error">' + esc(s.err) + '</div>';
+        h += '<button class="btn blk sacar" data-a="registrarSalida">SACAR</button>';
+      }
     }
     if (s.msg) h += '<div class="ok">' + esc(s.msg) + '</div>';
     return h + '</div>';
@@ -256,15 +273,15 @@
         filas.push({ e: e.estructura, d: e.diametro, m: e.marca, largo: e.largo, x: c.porMarca[k] });
       });
       filas.sort(function (a, b) { return (a.e < b.e ? -1 : a.e > b.e ? 1 : 0) || C.diamOrder(a.d) - C.diamOrder(b.d) || cmpMarca(a.m, b.m); });
-      cols = [{ t: 'Elemento', f: function (f) { return esc(f.e); } }, { t: 'Diám.', f: function (f) { return esc(C.diamLabel(f.d)); } }, { t: 'Marca', f: function (f) { return '<b>' + esc(f.m) + '</b>'; } },
+      cols = [{ t: 'Elemento', f: function (f) { return esc(f.e); } }, { t: 'Diám.', f: function (f) { return esc(C.diamLabel(f.d)); } }, { t: 'Posición', f: function (f) { return '<b>' + esc(f.m) + '</b>'; } },
         { t: 'Largo m', n: 1, f: function (f) { return f.largo ? kg(f.largo) : ''; } }].concat(base);
     }
     var h = '<div class="card"><h2>Inventario</h2><div class="seg">' +
-      [['diametro', 'Por diámetro'], ['elemento', 'Por elemento'], ['marca', 'Por marca']].map(function (o) { return '<button class="' + (v.vista === o[0] ? 'on' : '') + '" data-a="invVista" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
+      [['diametro', 'Por diámetro'], ['elemento', 'Por elemento'], ['marca', 'Por posición']].map(function (o) { return '<button class="' + (v.vista === o[0] ? 'on' : '') + '" data-a="invVista" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
       '<div class="row2"><select data-f="inv.elem" style="flex:1;min-width:150px"><option value="">Todos los elementos</option>' + elems.map(function (e) { return '<option value="' + esc(e) + '"' + (e === v.elem ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join('') + '</select>' +
       '<select data-f="inv.diam" style="flex:1;min-width:130px"><option value="">Todos los diámetros</option>' + diams.map(function (d) { return '<option value="' + esc(d) + '"' + (d === v.diam ? ' selected' : '') + '>' + esc(C.diamLabel(d)) + '</option>'; }).join('') + '</select></div>' +
       '<div style="margin-top:10px">' + (filas.length ? tablaInv(filas, cols) : '<div class="vacio">Sin datos con ese filtro</div>') + '</div>' +
-      (v.vista === 'marca' ? '<p class="peq mut">Las salidas que se registran sin marca se descuentan del total del diámetro, no de una marca.</p>' : '') + '</div>';
+      (v.vista === 'marca' ? '<p class="peq mut">Posición = número de la etiqueta.</p>' : '') + '</div>';
     return h;
   }
 
@@ -377,6 +394,7 @@
 
   function registrarSalida() {
     var s = S.sal;
+    if (!s.marca) { s.err = 'Escriba el número de la etiqueta.'; s.msg = ''; render(); return; }
     var err = C.validarSalida(S.calc, s.elem, s.diam, s.cant, s.marca);
     if (err) { s.err = err; s.msg = ''; render(); return; }
     var fch = /^\d{4}-\d\d-\d\d$/.test(s.fecha) ? s.fecha : hoyISO();
@@ -384,7 +402,7 @@
     var kgEst = C.kgSalida(S.calc, s.elem, s.diam, s.cant, s.marca), cant = s.cant, d = s.diam, e = s.elem;
     Api.salida(S.ses, { diametro: d, cantidad: cant, elemento: e, marca: s.marca, obs: s.obs, fecha: fch }).then(function (r) {
       if (!r.ok) { s.err = r.error; s.msg = ''; render(); return; }
-      s.err = ''; s.cant = 1; s.obs = ''; s.marca = ''; s.fecha = ''; s.largo = '';
+      s.err = ''; s.cant = 1; s.obs = ''; s.marca = ''; s.pos = ''; s.fecha = '';
       s.msg = 'Salida registrada: ' + cant + ' × ' + C.diamLabel(d) + ' en ' + e + ' (≈ ' + kg(kgEst) + ' kg)' + (r.pendiente ? '. Sin señal: se enviará sola al volver la conexión.' : '.');
       toast('Salida registrada');
       S.tab = 'panel'; window.scrollTo(0, 0);
@@ -395,7 +413,7 @@
   function descargarCSV() {
     var q = function (v) { v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var num = function (n) { return String(n == null ? '' : n).replace('.', ','); };
-    var f = [['Tipo', 'Fecha', 'Pedido', 'Elemento', 'Marca', 'Diametro', 'Cantidad', 'Largo_m', 'Kg', 'Usuario', 'Observacion', 'Estado']];
+    var f = [['Tipo', 'Fecha', 'Pedido', 'Elemento', 'Posicion', 'Diametro', 'Cantidad', 'Largo_m', 'Kg', 'Usuario', 'Observacion', 'Estado']];
     var ped = {}; S.estado.pedidos.forEach(function (p) { ped[p.loadId] = p; });
     S.estado.entradas.forEach(function (e) { var p = ped[e.loadId] || {}; f.push(['ENTRADA', e.fecha, e.pedido, e.estructura, e.marca, e.diametro, e.cantidad, num(e.largo), num(e.kg), p.usuario || '', '', '']); });
     S.estado.salidas.forEach(function (s) { f.push(['SALIDA', s.fecha, '', s.elemento, s.marca, s.diametro, s.cantidad, '', num(s.kg), s.usuario, s.obs, s.estado]); });
@@ -418,7 +436,11 @@
       case 'tab': S.tab = v; render(); window.scrollTo(0, 0); break;
       case 'refrescar': cargarEstado().then(function () { toast('Actualizado'); }); break;
       case 'salir': Api.salir(); S.ses = null; S.loginErr = ''; render(); break;
-      case 'diam': S.sal.diam = v; S.sal.elem = ''; S.sal.marca = ''; S.sal.largo = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); break;
+      case 'elem': S.sal.elem = v; S.sal.diam = ''; S.sal.pos = ''; S.sal.marca = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); break;
+      case 'diam': S.sal.diam = v; S.sal.pos = ''; S.sal.marca = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); break;
+      case 'tecla': if (S.sal.pos.length < 3) { S.sal.pos = (S.sal.pos + v).replace(/^0+(?=\d)/, ''); S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); } break;
+      case 'borrar': S.sal.pos = S.sal.pos.slice(0, -1); S.sal.cant = 1; S.sal.err = ''; render(); break;
+      case 'limpiar': S.sal.pos = ''; S.sal.cant = 1; S.sal.err = ''; render(); break;
       case 'mas': S.sal.cant = Math.min((S.sal.cant || 0) + 1, maxSalida() || 1); render(); break;
       case 'menos': S.sal.cant = Math.max((S.sal.cant || 1) - 1, 1); render(); break;
       case 'registrarSalida': registrarSalida(); break;
@@ -446,8 +468,6 @@
     var f = t.getAttribute('data-f');
     if (f) {
       var p = f.split('.'); S[p[0]][p[1]] = t.value;
-      if (f === 'sal.elem') { S.sal.marca = ''; S.sal.largo = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; }
-      if (f === 'sal.marca') { S.sal.cant = 1; }
       render(); return;
     }
     var lg = t.getAttribute('data-largo');
@@ -466,15 +486,6 @@
   document.addEventListener('input', function (ev) {
     var t = ev.target, i = t.getAttribute('data-i'); if (!i) return;
     if (i === 'sal.obs') S.sal.obs = t.value;
-    else if (i === 'sal.largo') {
-      S.sal.largo = t.value;
-      var mo = marcaOpciones(marcasDe(S.sal.elem, S.sal.diam), S.sal);
-      if (mo.lista.length === 1) S.sal.marca = mo.lista[0].marca;
-      else if (!mo.lista.some(function (m) { return m.marca === S.sal.marca; })) S.sal.marca = '';
-      var sm = $('s-marca'); if (sm) { sm.innerHTML = marcaOpciones(marcasDe(S.sal.elem, S.sal.diam), S.sal).html; sm.value = S.sal.marca; }
-      S.sal.cant = 1; var sc = $('s-cant'); if (sc) sc.value = 1;
-      if (typeof actualizarResumen === 'function') actualizarResumen();
-    }
     else if (i === 'sal.fecha') S.sal.fecha = t.value;
     else if (i === 'sal.cant') {
       var n = parseInt(t.value, 10), max = maxSalida();
