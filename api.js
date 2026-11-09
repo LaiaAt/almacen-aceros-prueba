@@ -106,7 +106,7 @@
       var body = { action: 'salida', pin: ses.pin, usuario: ses.nombre, id: id, diametro: d.diametro, cantidad: d.cantidad,
         elemento: d.elemento, marca: marca, obs: d.obs || '', fecha: conFecha(d.fecha) };
       return post(body).catch(function () {
-        var q = leer(K.cola, []); q.push(body); guardar(K.cola, q);
+        var q = leer(K.cola, []), nb = JSON.parse(JSON.stringify(body)); delete nb.pin; q.push(nb); guardar(K.cola, q); // el PIN no se guarda en la cola
         return { ok: true, pendiente: true };
       });
     },
@@ -145,8 +145,7 @@
       return q.reduce(function (p, b, i) {
         return p.then(function () {
           if (quedan.length) return;
-          b.pin = ses.pin;
-          return post(b).then(function (r) { if (r.ok) enviadas++; else errores.push({ body: b, error: r.error }); })
+          return post(Object.assign({}, b, { pin: ses.pin })).then(function (r) { if (r.ok) enviadas++; else errores.push({ body: b, error: r.error }); })
             .catch(function () { quedan = q.slice(i); });
         });
       }, Promise.resolve()).then(function () {

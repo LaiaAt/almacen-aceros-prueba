@@ -30,7 +30,8 @@ function configurar() {
   Logger.log('Listo. PIN generados al azar: vea/cámbielos en Propiedades de la secuencia de comandos (ADMIN_PIN, SUP_PIN).');
 }
 
-function doGet(e) { return responder_(manejar_(e && e.parameter ? e.parameter : {})); }
+// Solo POST: por GET el PIN viajaría en la URL (queda en historiales y registros).
+function doGet() { return responder_({ ok: false, error: 'Use POST' }); }
 function doPost(e) {
   var req = {};
   try { req = JSON.parse(e.postData.contents); } catch (err) { return responder_({ ok: false, error: 'Solicitud inválida' }); }
@@ -130,31 +131,48 @@ function leerTodo_() {
   };
 }
 
+// ---------- Validación de entradas (el servidor nunca confía en la app) ----------
+var MAX_FILAS_DLI = 3000;
+/** Texto seguro: recorta, quita control y evita que una celda se interprete como fórmula (=, +, -, @). */
+function txt_(v, max) {
+  var s = String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max || 120);
+  return /^[=+\-@]/.test(s) && !/^-?\d+([.,]\d+)?$/.test(s) ? "'" + s : s;
+}
+/** Número finito y no negativo, o error. */
+function num_(v, nombre, max) {
+  var n = Number(v);
+  if (!isFinite(n) || n < 0 || n > (max || 1e7)) throw new Error('Valor inválido en ' + nombre);
+  return n;
+}
+
 // ---------- Acciones ----------
 function ahora_() { return Utilities.formatDate(new Date(), 'America/Bogota', "yyyy-MM-dd'T'HH:mm:ss"); }
 
 function cargarDLI_(req) {
-  var pedido = String(req.pedido || '').trim();
-  if (!pedido) return { ok: false, error: 'Falta el número de pedido' };
-  var entradas = req.entradas || [];
+  var pedido = txt_(req.pedido, 30);
+  if (!/^[A-Za-z0-9._\-]{1,30}$/.test(pedido)) return { ok: false, error: 'Número de pedido inválido (use letras, números, punto o guion)' };
+  var entradas = Array.isArray(req.entradas) ? req.entradas : [];
   if (!entradas.length) return { ok: false, error: 'El DLI no trae piezas' };
-  var est = String(req.estructura || '').trim();
+  if (entradas.length > MAX_FILAS_DLI) return { ok: false, error: 'El DLI trae demasiadas filas' };
+  var est = txt_(req.estructura, 80);
+  if (!est) return { ok: false, error: 'Falta la estructura' };
   var existentes = leer_('Pedidos');
   for (var i = 0; i < existentes.length; i++) {
     if (String(existentes[i].pedido) === pedido && String(existentes[i].estructura) === est)
       return { ok: false, error: 'Ya está cargado el pedido ' + pedido + ' para ' + est };
   }
-  var loadId = req.loadId || ('L' + new Date().getTime());
+  var loadId = /^[A-Za-z0-9_\-]{1,40}$/.test(String(req.loadId || '')) ? String(req.loadId) : ('L' + new Date().getTime());
   var fecha = ahora_();
   var piezas = 0, kg = 0;
   var filas = entradas.map(function (e) {
-    piezas += Number(e.cantidad) || 0; kg += Number(e.kg) || 0;
-    return { loadId: loadId, pedido: pedido, estructura: est, marca: String(e.marca), diametro: String(e.diametro),
-      cantidad: Number(e.cantidad), largo: Number(e.largo) || 0, kgUnit: Number(e.kgUnit) || 0, kg: Number(e.kg) || 0, fecha: fecha };
+    var cant = num_(e.cantidad, 'cantidad', 100000), k = num_(e.kg, 'kg', 1e7);
+    piezas += cant; kg += k;
+    return { loadId: loadId, pedido: pedido, estructura: est, marca: txt_(e.marca, 20), diametro: txt_(e.diametro, 12),
+      cantidad: cant, largo: num_(e.largo || 0, 'largo', 1000), kgUnit: num_(e.kgUnit || 0, 'kgUnit', 1e5), kg: k, fecha: fecha };
   });
   agregar_('Entradas', filas);
-  agregar_('Pedidos', [{ loadId: loadId, pedido: pedido, estructura: est, descripcion: req.descripcion || '', proyecto: req.proyecto || '',
-    archivo: req.archivo || '', fecha: fecha, usuario: req.usuario || '', piezas: piezas, kg: Math.round(kg * 100) / 100 }]);
+  agregar_('Pedidos', [{ loadId: loadId, pedido: pedido, estructura: est, descripcion: txt_(req.descripcion, 120), proyecto: txt_(req.proyecto, 120),
+    archivo: txt_(req.archivo, 120), fecha: fecha, usuario: txt_(req.usuario, 60), piezas: piezas, kg: Math.round(kg * 100) / 100 }]);
   return { ok: true, loadId: loadId, piezas: piezas, kg: Math.round(kg * 100) / 100 };
 }
 
@@ -171,9 +189,9 @@ function saldo_(estado, elemento, diametro, marca) {
 
 function registrarSalida_(req) {
   var estado = leerTodo_();
-  var id = String(req.id || ('S' + new Date().getTime()));
+  var id = /^[A-Za-z0-9_\-]{1,60}$/.test(String(req.id || '')) ? String(req.id) : ('S' + new Date().getTime());
   for (var i = 0; i < estado.salidas.length; i++) if (estado.salidas[i].id === id) return { ok: true, repetida: true, id: id }; // reintento: ya existe
-  var elemento = String(req.elemento || ''), diametro = String(req.diametro || ''), marca = String(req.marca || '');
+  var elemento = txt_(req.elemento, 80), diametro = txt_(req.diametro, 12), marca = txt_(req.marca, 20);
   var cant = Number(req.cantidad);
   if (!elemento || !diametro) return { ok: false, error: 'Falta el elemento o el diámetro' };
   if (!(cant > 0) || Math.floor(cant) !== cant) return { ok: false, error: 'La cantidad debe ser un entero mayor que 0' };
@@ -188,7 +206,7 @@ function registrarSalida_(req) {
   kg = Math.round(kg * 1000) / 1000;
   var fecha = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(String(req.fecha || '')) ? String(req.fecha) : ahora_();
   var fila = { id: id, fecha: fecha, diametro: diametro, cantidad: cant, elemento: elemento, marca: marca, kg: kg,
-    usuario: String(req.usuario || ''), obs: String(req.obs || ''), estado: 'ACTIVA' };
+    usuario: txt_(req.usuario, 60), obs: txt_(req.obs, 120), estado: 'ACTIVA' };
   agregar_('Salidas', [fila]);
   return { ok: true, salida: fila };
 }
