@@ -19,6 +19,8 @@
     var d = new Date(), z = function (n) { return String(n).padStart(2, '0'); };
     return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
   }
+  function esHoy(f) { return String(f || '').slice(0, 10) === hoyISO(); }
+  function horaAhora() { var d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function fecha(f) {
     var m = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)/.exec(f || '');
     return m ? m[3] + '/' + m[2] + ' ' + m[4] + ':' + m[5] : (f || '');
@@ -56,8 +58,9 @@
     var h = '', pend = Api.pendientes(), errs = Api.erroresCola();
     if (!Api.remoto) h += '<div class="banda info">Modo local de prueba: los datos solo existen en este navegador.</div>';
     if (S.offline) h += '<div class="banda warn">Sin conexión: se muestran los últimos datos guardados en este celular.</div>';
-    if (pend) h += '<div class="banda warn">' + pend + ' salida(s) sin enviar por falta de señal. Se envían solas al volver la conexión.<button class="btn chico" data-a="enviarCola">Enviar ahora</button></div>';
-    if (errs.length) h += '<div class="banda bad"><div>' + errs.map(function (e) { return 'No se pudo registrar ' + esc(e.body.cantidad) + ' × ' + esc(e.body.diametro) + '" en ' + esc(e.body.elemento) + ': ' + esc(e.error); }).join('<br>') + '</div><button class="btn chico sec" data-a="limpiarErrores">Entendido</button></div>';
+    if (pend && S.enviando) h += '<div class="banda info env"><span>Enviando la salida al almacén…</span><i class="prog"><b></b></i></div>';
+    else if (pend) h += '<div class="banda warn">' + pend + ' salida(s) sin enviar por falta de señal. Se envían solas al volver la conexión.<button class="btn chico" data-a="enviarCola">Enviar ahora</button></div>';
+    if (errs.length) h += '<div class="banda bad"><div>' + errs.map(function (e) { return e.body.items ? 'No se pudo registrar la salida (' + e.body.items.length + ' posiciones): ' + esc(e.error) : 'No se pudo registrar ' + esc(e.body.cantidad) + ' × ' + esc(e.body.diametro) + '" en ' + esc(e.body.elemento) + ': ' + esc(e.error); }).join('<br>') + '</div><button class="btn chico sec" data-a="limpiarErrores">Entendido</button></div>';
     return h;
   }
 
@@ -93,7 +96,7 @@
     if (m.t === 'E') {
       var p = m.p;
       return '<div class="mov"><div class="ic e">+</div><div class="cu"><b>Carga DLI · ' + esc(p.estructura) + '</b><span>Pedido ' + esc(p.pedido) + ' · ' + n0(p.piezas) + ' pzs · ' + kg(p.kg) + ' kg · ' + esc(p.usuario) + ' · ' + fecha(p.fecha) + '</span></div>' +
-        (conAcciones && esAdmin() ? '<button class="btn chico sec" data-a="anularCarga" data-v="' + esc(p.loadId) + '">Anular</button>' : '') + '</div>';
+        (conAcciones && esAdmin() && esHoy(p.fecha) ? '<button class="btn chico sec" data-a="anularCarga" data-v="' + esc(p.loadId) + '">Anular</button>' : '') + '</div>';
     }
     if (m.g && m.g.length > 1) {
       var activas = m.g.filter(function (x) { return x.estado !== 'ANULADA'; }), anG = !activas.length, g0 = m.g[0];
@@ -101,12 +104,12 @@
       return '<div class="mov' + (anG ? ' anul' : '') + '"><div class="ic ' + (anG ? 'a' : 's') + '">−</div><div class="cu"><b>Salida · ' + m.g.length + ' líneas' + (anG ? '<span class="tag">anulada</span>' : '') + '</b>' +
         m.g.map(function (x) { return '<span>' + n0(x.cantidad) + ' × ' + esc(C.diamLabel(x.diametro)) + (x.marca ? ' · pos. ' + esc(x.marca) : '') + ' · ' + esc(x.elemento) + ' · ' + kg(x.kg) + ' kg' + (x.estado === 'ANULADA' && !anG ? ' (anulada)' : '') + '</span>'; }).join('') +
         '<span><b>' + kg(totkg) + ' kg</b> · ' + esc(g0.usuario) + ' · ' + fecha(g0.fecha) + (g0.obs ? ' · ' + esc(g0.obs) : '') + '</span></div>' +
-        (conAcciones && esAdmin() && !anG && !m.g.some(function (x) { return x.pendiente; }) ? '<button class="btn chico sec" data-a="anularSalida" data-v="' + esc(activas.map(function (x) { return x.id; }).join(',')) + '">Anular todo</button>' : '') + '</div>';
+        (conAcciones && esAdmin() && !anG && m.g.every(function (x) { return !x.pendiente && esHoy(x.fecha); }) ? '<button class="btn chico sec" data-a="anularSalida" data-v="' + esc(activas.map(function (x) { return x.id; }).join(',')) + '">Anular todo</button>' : '') + '</div>';
     }
     var s = m.s, an = s.estado === 'ANULADA';
     return '<div class="mov' + (an ? ' anul' : '') + '"><div class="ic ' + (an ? 'a' : 's') + '">−</div><div class="cu"><b>' + n0(s.cantidad) + ' × ' + esc(C.diamLabel(s.diametro)) + ' · ' + esc(s.elemento) +
       (s.pendiente ? '<span class="tag pend">sin enviar</span>' : '') + (an ? '<span class="tag">anulada</span>' : '') + '</b><span>' + kg(s.kg) + ' kg' + (s.marca ? ' · pos. ' + esc(s.marca) : '') + ' · ' + esc(s.usuario) + ' · ' + fecha(s.fecha) + (s.obs ? ' · ' + esc(s.obs) : '') + '</span></div>' +
-      (conAcciones && esAdmin() && !an && !s.pendiente ? '<button class="btn chico sec" data-a="anularSalida" data-v="' + esc(s.id) + '">Anular</button>' : '') + '</div>';
+      (conAcciones && esAdmin() && !an && !s.pendiente && esHoy(s.fecha) ? '<button class="btn chico sec" data-a="anularSalida" data-v="' + esc(s.id) + '">Anular</button>' : '') + '</div>';
   }
 
   function vPanel() {
@@ -232,7 +235,8 @@
     if (!conSaldo.length && !s.items.length) return h + '<div class="vacio">No queda acero disponible en el almacén.</div></div>';
     h += '<div class="fgrid">' +
       '<div class="fld"><label for="s-fecha">Fecha</label><input id="s-fecha" type="date" max="' + hoyISO() + '" value="' + esc(s.fecha || hoyISO()) + '" data-i="sal.fecha"></div>' +
-      '<div class="fld" style="grid-column: span 2"><label for="s-elem">Estructura</label><select id="s-elem" data-f="sal.elem">' + (s.elem ? '' : '<option value="">Elija la estructura…</option>') +
+      '<div class="fld"><label for="s-hora">Hora</label><input id="s-hora" type="text" readonly tabindex="-1" value="' + horaAhora() + '"></div>' +
+      '<div class="fld" style="grid-column: 1 / -1"><label for="s-elem">Estructura</label><select id="s-elem" data-f="sal.elem">' + (s.elem ? '' : '<option value="">Elija la estructura…</option>') +
         todas.map(function (e) {
           var pz = S.calc.porElem[e] ? S.calc.porElem[e].sal_p : 0, ped = {};
           S.estado.pedidos.forEach(function (p) { if (p.estructura === e) ped[p.pedido] = 1; });
@@ -407,7 +411,7 @@
   }
   function enviarCola() {
     if (S.enviando || !Api.remoto || !S.ses) return Promise.resolve();
-    S.enviando = true;
+    S.enviando = true; render();
     return Api.flush(S.ses).then(function (r) {
       S.enviando = false;
       if (r.enviadas) { toast(r.enviadas + ' salida(s) enviadas'); return cargarEstado(); }
@@ -435,6 +439,10 @@
       var mal = p.rows.filter(function (r) { return !r.largo || !r.peso; })[0];
       if (mal) c.err = 'Complete la marca ' + mal.marca + ' (falta largo o peso del diámetro ' + mal.diametro + ').';
     }
+    if (!c.err) {
+      var rep = S.estado.pedidos.filter(function (x) { return x.estructura === p.nombre && (String(x.pedido) === String(c.pedido).trim() || (Math.abs(x.piezas - p.totalPiezas) < 1 && Math.abs(x.kg - p.totalKg) < 0.5)); })[0];
+      if (rep) c.err = 'Este DLI ya está cargado (' + p.nombre + ', pedido ' + rep.pedido + '). No se puede guardar dos veces.';
+    }
     if (c.err) { render(); return; }
     Api.cargarDLI(S.ses, p, c.pedido).then(function (r) {
       if (!r.ok) { c.err = r.error; render(); return; }
@@ -455,25 +463,15 @@
     var fch = /^\d{4}-\d\d-\d\d$/.test(s.fecha) ? s.fecha : hoyISO();
     if (fch > hoyISO()) { s.err = 'La fecha de salida no puede ser futura.'; s.msg = ''; render(); return; }
     if (!s.grupo) s.grupo = 'S' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    lista.forEach(function (it) { if (!it.id) it.id = s.grupo + '-' + (++s.n); });
-    var enviadas = 0, pend = false, totKg = 0, fallo = '';
-    lista.reduce(function (pr, it) {
-      return pr.then(function () {
-        if (fallo) return;
-        return Api.salida(S.ses, { id: it.id, diametro: it.diam, cantidad: it.cant, elemento: it.elem, marca: it.marca, obs: s.obs, fecha: fch }).then(function (r) {
-          if (!r.ok) { fallo = 'Posición ' + it.pos + ': ' + r.error; return; }
-          enviadas++; totKg += it.kg; if (r.pendiente) pend = true;
-          s.items = s.items.filter(function (x) { return x !== it; });
-          if (it === actual) { s.pos = ''; s.marca = ''; s.cant = 1; }
-        });
-      });
-    }, Promise.resolve()).then(function () {
-      if (fallo) { s.err = (enviadas ? 'Se registraron ' + enviadas + ' de ' + lista.length + '. ' : '') + fallo; s.msg = ''; return cargarEstado(); }
-      s.err = ''; s.obs = ''; s.fecha = ''; s.grupo = ''; s.n = 0; s.items = [];
-      s.msg = 'Salida registrada: ' + enviadas + (enviadas === 1 ? ' línea' : ' líneas') + ' (≈ ' + kg(totKg) + ' kg)' + (pend ? '. Sin señal: se enviará sola al volver la conexión.' : '.');
-      toast('Salida registrada');
+    var totKg = 0, totP = 0; lista.forEach(function (it) { totKg += it.kg; totP += it.cant; });
+    var obs = s.obs;
+    s.err = ''; s.msg = '';
+    Api.salidaLote(S.ses, { grupo: s.grupo, items: lista.map(function (it) { return { diametro: it.diam, cantidad: it.cant, elemento: it.elem, marca: it.marca }; }), obs: obs, fecha: fch }).then(function (r) {
+      if (!r.ok) { s.err = r.error; render(); return; }
+      s.obs = ''; s.fecha = ''; s.grupo = ''; s.n = 0; s.items = []; s.q = '';
+      s.msg = 'Salida registrada: ' + n0(totP) + (totP === 1 ? ' pieza' : ' piezas') + ' (≈ ' + kg(totKg) + ' kg).';
       S.tab = 'panel'; window.scrollTo(0, 0);
-      return cargarEstado();
+      render(); return enviarCola();
     });
   }
 

@@ -30,10 +30,13 @@
     if (!q.length) return estado;
     var e = { pedidos: estado.pedidos, entradas: estado.entradas, salidas: estado.salidas.slice() };
     q.forEach(function (b) {
-      if (e.salidas.some(function (s) { return s.id === b.id; })) return;
-      var calc = C.calcular(e);
-      e.salidas.push({ id: b.id, fecha: conFecha(b.fecha), diametro: b.diametro, cantidad: b.cantidad, elemento: b.elemento, marca: b.marca || '',
-        kg: C.kgSalida(calc, b.elemento, b.diametro, b.cantidad, b.marca || ''), usuario: b.usuario, obs: b.obs || '', estado: 'ACTIVA', pendiente: true });
+      var partes = b.items ? b.items.map(function (it, k) { return Object.assign({}, it, { id: b.grupo + '-' + (k + 1), fecha: b.fecha, usuario: b.usuario, obs: b.obs }); }) : [b];
+      partes.forEach(function (b) {
+        if (e.salidas.some(function (s) { return s.id === b.id; })) return;
+        var calc = C.calcular(e);
+        e.salidas.push({ id: b.id, fecha: conFecha(b.fecha), diametro: b.diametro, cantidad: b.cantidad, elemento: b.elemento, marca: b.marca || '',
+          kg: C.kgSalida(calc, b.elemento, b.diametro, b.cantidad, b.marca || ''), usuario: b.usuario, obs: b.obs || '', estado: 'ACTIVA', pendiente: true });
+      });
     });
     return e;
   }
@@ -109,6 +112,21 @@
         var q = leer(K.cola, []), nb = JSON.parse(JSON.stringify(body)); delete nb.pin; q.push(nb); guardar(K.cola, q); // el PIN no se guarda en la cola
         return { ok: true, pendiente: true };
       });
+    },
+
+    /** Salida con varias posiciones: se guarda al instante en la cola y se envía en UNA sola llamada (rápido). */
+    salidaLote: function (ses, d) {
+      var self = this;
+      if (!remoto) {
+        return d.items.reduce(function (p, it) {
+          return p.then(function (r) { return r && !r.ok ? r : self.salida(ses, { diametro: it.diametro, cantidad: it.cantidad, elemento: it.elemento, marca: it.marca, obs: d.obs, fecha: d.fecha }); });
+        }, Promise.resolve({ ok: true }));
+      }
+      var q = leer(K.cola, []);
+      if (!q.some(function (b) { return b.grupo === d.grupo; }))
+        q.push({ action: 'salidaLote', grupo: d.grupo, usuario: ses.nombre, items: d.items, obs: d.obs || '', fecha: conFecha(d.fecha) });
+      guardar(K.cola, q);
+      return Promise.resolve({ ok: true, pendiente: true });
     },
 
     anularSalida: function (ses, id) {
