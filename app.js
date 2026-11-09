@@ -5,7 +5,7 @@
 
   var S = {
     ses: null, estado: { pedidos: [], entradas: [], salidas: [] }, calc: null, tab: 'panel', offline: false, enviando: false,
-    sal: { diam: '', elem: '', marca: '', cant: 1, obs: '', fecha: '', msg: '', err: '' },
+    sal: { diam: '', elem: '', marca: '', cant: 1, obs: '', fecha: '', largo: '', msg: '', err: '' },
     inv: { vista: 'diametro', elem: '', diam: '' },
     cargas: [], loginErr: '', loginNom: ''
   };
@@ -148,6 +148,12 @@
     });
     return r.sort(function (a, b) { return cmpMarca(a.marca, b.marca); });
   }
+  function marcaOpciones(ms, s) {
+    var q = parseFloat(String(s.largo || '').replace(',', '.'));
+    var f = isNaN(q) ? ms : ms.filter(function (m) { return Math.abs((m.largo || 0) - q) < 0.011; });
+    return { lista: f, html: '<option value="">' + (isNaN(q) ? 'Cualquiera' : (f.length ? (f.length === 1 ? '1 coincidencia' : 'Cualquiera de las ' + f.length + ' coincidencias') : 'Sin coincidencias con ' + q + ' m')) + '</option>' +
+      f.map(function (m) { return '<option value="' + esc(m.marca) + '"' + (m.marca === s.marca ? ' selected' : '') + '>' + esc(m.marca) + (m.largo ? ' · ' + m.largo + ' m' : '') + ' · ' + n0(m.disp) + ' disp.</option>'; }).join('') };
+  }
   function ajustarSalida() {
     var s = S.sal, ds = diamsDisponibles();
     if (ds.indexOf(s.diam) < 0) { s.diam = ''; s.elem = ''; s.marca = ''; }
@@ -188,8 +194,8 @@
     }
     if (s.diam && s.elem) {
       var ms = marcasDe(s.elem, s.diam);
-      h += '<label class="f" for="s-marca">Marca (opcional)</label><select id="s-marca" data-f="sal.marca"><option value="">Cualquiera</option>' +
-        ms.map(function (m) { return '<option value="' + esc(m.marca) + '"' + (m.marca === s.marca ? ' selected' : '') + '>' + esc(m.marca) + (m.largo ? ' · ' + m.largo + ' m' : '') + ' · ' + n0(m.disp) + ' disp.</option>'; }).join('') + '</select>';
+      h += '<label class="f" for="s-largo">Largo de la etiqueta en m (opcional)</label><input id="s-largo" type="text" inputmode="decimal" maxlength="6" placeholder="Ej. 3.30" value="' + esc(s.largo) + '" data-i="sal.largo">' +
+        '<label class="f" for="s-marca">Marca (opcional)</label><select id="s-marca" data-f="sal.marca">' + marcaOpciones(ms, s).html + '</select>';
       var r = resumenSalida();
       h += '<label class="f">3. Cantidad de varillas</label><div class="step"><button data-a="menos" aria-label="Menos">−</button>' +
         '<input id="s-cant" type="number" inputmode="numeric" min="1" max="' + r.max + '" value="' + s.cant + '" data-i="sal.cant"><button data-a="mas" aria-label="Más">+</button></div>' +
@@ -378,7 +384,7 @@
     var kgEst = C.kgSalida(S.calc, s.elem, s.diam, s.cant, s.marca), cant = s.cant, d = s.diam, e = s.elem;
     Api.salida(S.ses, { diametro: d, cantidad: cant, elemento: e, marca: s.marca, obs: s.obs, fecha: fch }).then(function (r) {
       if (!r.ok) { s.err = r.error; s.msg = ''; render(); return; }
-      s.err = ''; s.cant = 1; s.obs = ''; s.marca = ''; s.fecha = '';
+      s.err = ''; s.cant = 1; s.obs = ''; s.marca = ''; s.fecha = ''; s.largo = '';
       s.msg = 'Salida registrada: ' + cant + ' × ' + C.diamLabel(d) + ' en ' + e + ' (≈ ' + kg(kgEst) + ' kg)' + (r.pendiente ? '. Sin señal: se enviará sola al volver la conexión.' : '.');
       toast('Salida registrada');
       S.tab = 'panel'; window.scrollTo(0, 0);
@@ -412,7 +418,7 @@
       case 'tab': S.tab = v; render(); window.scrollTo(0, 0); break;
       case 'refrescar': cargarEstado().then(function () { toast('Actualizado'); }); break;
       case 'salir': Api.salir(); S.ses = null; S.loginErr = ''; render(); break;
-      case 'diam': S.sal.diam = v; S.sal.elem = ''; S.sal.marca = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); break;
+      case 'diam': S.sal.diam = v; S.sal.elem = ''; S.sal.marca = ''; S.sal.largo = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); break;
       case 'mas': S.sal.cant = Math.min((S.sal.cant || 0) + 1, maxSalida() || 1); render(); break;
       case 'menos': S.sal.cant = Math.max((S.sal.cant || 1) - 1, 1); render(); break;
       case 'registrarSalida': registrarSalida(); break;
@@ -440,7 +446,7 @@
     var f = t.getAttribute('data-f');
     if (f) {
       var p = f.split('.'); S[p[0]][p[1]] = t.value;
-      if (f === 'sal.elem') { S.sal.marca = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; }
+      if (f === 'sal.elem') { S.sal.marca = ''; S.sal.largo = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; }
       if (f === 'sal.marca') { S.sal.cant = 1; }
       render(); return;
     }
@@ -460,6 +466,15 @@
   document.addEventListener('input', function (ev) {
     var t = ev.target, i = t.getAttribute('data-i'); if (!i) return;
     if (i === 'sal.obs') S.sal.obs = t.value;
+    else if (i === 'sal.largo') {
+      S.sal.largo = t.value;
+      var mo = marcaOpciones(marcasDe(S.sal.elem, S.sal.diam), S.sal);
+      if (mo.lista.length === 1) S.sal.marca = mo.lista[0].marca;
+      else if (!mo.lista.some(function (m) { return m.marca === S.sal.marca; })) S.sal.marca = '';
+      var sm = $('s-marca'); if (sm) { sm.innerHTML = marcaOpciones(marcasDe(S.sal.elem, S.sal.diam), S.sal).html; sm.value = S.sal.marca; }
+      S.sal.cant = 1; var sc = $('s-cant'); if (sc) sc.value = 1;
+      if (typeof actualizarResumen === 'function') actualizarResumen();
+    }
     else if (i === 'sal.fecha') S.sal.fecha = t.value;
     else if (i === 'sal.cant') {
       var n = parseInt(t.value, 10), max = maxSalida();
