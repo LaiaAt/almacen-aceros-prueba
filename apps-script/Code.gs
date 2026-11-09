@@ -186,7 +186,8 @@ function registrarSalida_(req) {
   }
   var kg = cant >= ref.piezas ? ref.kg : (ref.kg / ref.piezas) * cant;
   kg = Math.round(kg * 1000) / 1000;
-  var fila = { id: id, fecha: ahora_(), diametro: diametro, cantidad: cant, elemento: elemento, marca: marca, kg: kg,
+  var fecha = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(String(req.fecha || '')) ? String(req.fecha) : ahora_();
+  var fila = { id: id, fecha: fecha, diametro: diametro, cantidad: cant, elemento: elemento, marca: marca, kg: kg,
     usuario: String(req.usuario || ''), obs: String(req.obs || ''), estado: 'ACTIVA' };
   agregar_('Salidas', [fila]);
   return { ok: true, salida: fila };

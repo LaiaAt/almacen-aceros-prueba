@@ -16,6 +16,10 @@
     var d = new Date(), z = function (n) { return String(n).padStart(2, '0'); };
     return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + 'T' + z(d.getHours()) + ':' + z(d.getMinutes()) + ':' + z(d.getSeconds());
   }
+  function conFecha(dia) {
+    var a = ahora();
+    return /^\d{4}-\d\d-\d\d$/.test(dia || '') ? dia + a.slice(10) : a;
+  }
   function post(body) {
     return fetch(CFG.API_URL, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
   }
@@ -28,7 +32,7 @@
     q.forEach(function (b) {
       if (e.salidas.some(function (s) { return s.id === b.id; })) return;
       var calc = C.calcular(e);
-      e.salidas.push({ id: b.id, fecha: ahora(), diametro: b.diametro, cantidad: b.cantidad, elemento: b.elemento, marca: b.marca || '',
+      e.salidas.push({ id: b.id, fecha: conFecha(b.fecha), diametro: b.diametro, cantidad: b.cantidad, elemento: b.elemento, marca: b.marca || '',
         kg: C.kgSalida(calc, b.elemento, b.diametro, b.cantidad, b.marca || ''), usuario: b.usuario, obs: b.obs || '', estado: 'ACTIVA', pendiente: true });
     });
     return e;
@@ -94,13 +98,13 @@
         var calc = C.calcular(s);
         var err = C.validarSalida(calc, d.elemento, d.diametro, d.cantidad, marca);
         if (err) return Promise.resolve({ ok: false, error: err });
-        s.salidas.push({ id: id, fecha: ahora(), diametro: d.diametro, cantidad: d.cantidad, elemento: d.elemento, marca: marca,
+        s.salidas.push({ id: id, fecha: conFecha(d.fecha), diametro: d.diametro, cantidad: d.cantidad, elemento: d.elemento, marca: marca,
           kg: C.kgSalida(calc, d.elemento, d.diametro, d.cantidad, marca), usuario: ses.nombre, obs: d.obs || '', estado: 'ACTIVA' });
         guardar(K.local, s);
         return Promise.resolve({ ok: true });
       }
       var body = { action: 'salida', pin: ses.pin, usuario: ses.nombre, id: id, diametro: d.diametro, cantidad: d.cantidad,
-        elemento: d.elemento, marca: marca, obs: d.obs || '' };
+        elemento: d.elemento, marca: marca, obs: d.obs || '', fecha: conFecha(d.fecha) };
       return post(body).catch(function () {
         var q = leer(K.cola, []); q.push(body); guardar(K.cola, q);
         return { ok: true, pendiente: true };

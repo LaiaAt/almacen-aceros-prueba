@@ -5,7 +5,7 @@
 
   var S = {
     ses: null, estado: { pedidos: [], entradas: [], salidas: [] }, calc: null, tab: 'panel', offline: false, enviando: false,
-    sal: { diam: '', elem: '', marca: '', cant: 1, obs: '', msg: '', err: '' },
+    sal: { diam: '', elem: '', marca: '', cant: 1, obs: '', fecha: '', msg: '', err: '' },
     inv: { vista: 'diametro', elem: '', diam: '' },
     cargas: [], loginErr: '', loginNom: ''
   };
@@ -15,6 +15,10 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function n0(n) { return Number(n || 0).toLocaleString('es-CO'); }
   function kg(n) { return Number(n || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function hoyISO() {
+    var d = new Date(), z = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+  }
   function fecha(f) {
     var m = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)/.exec(f || '');
     return m ? m[3] + '/' + m[2] + ' ' + m[4] + ':' + m[5] : (f || '');
@@ -190,6 +194,7 @@
       h += '<label class="f">3. Cantidad de varillas</label><div class="step"><button data-a="menos" aria-label="Menos">−</button>' +
         '<input id="s-cant" type="number" inputmode="numeric" min="1" max="' + r.max + '" value="' + s.cant + '" data-i="sal.cant"><button data-a="mas" aria-label="Más">+</button></div>' +
         '<div class="resumen"><div><small>Disponible</small><b id="r-disp">' + n0(r.max) + ' pzs</b></div><div class="der"><small>Peso estimado</small><b id="r-kg">' + kg(r.kg) + ' kg</b></div></div>' +
+        '<label class="f" for="s-fecha">Fecha de salida</label><input id="s-fecha" type="date" max="' + hoyISO() + '" value="' + esc(s.fecha || hoyISO()) + '" data-i="sal.fecha">' +
         '<label class="f" for="s-obs">Observación (opcional)</label><input id="s-obs" type="text" maxlength="120" placeholder="Ej. losa fondo, turno noche" value="' + esc(s.obs) + '" data-i="sal.obs">';
       if (s.err) h += '<div class="error">' + esc(s.err) + '</div>';
       h += '<div style="margin-top:14px"><button class="btn blk" data-a="registrarSalida">Registrar salida</button></div>';
@@ -368,12 +373,15 @@
     var s = S.sal;
     var err = C.validarSalida(S.calc, s.elem, s.diam, s.cant, s.marca);
     if (err) { s.err = err; s.msg = ''; render(); return; }
+    var fch = /^\d{4}-\d\d-\d\d$/.test(s.fecha) ? s.fecha : hoyISO();
+    if (fch > hoyISO()) { s.err = 'La fecha de salida no puede ser futura.'; s.msg = ''; render(); return; }
     var kgEst = C.kgSalida(S.calc, s.elem, s.diam, s.cant, s.marca), cant = s.cant, d = s.diam, e = s.elem;
-    Api.salida(S.ses, { diametro: d, cantidad: cant, elemento: e, marca: s.marca, obs: s.obs }).then(function (r) {
+    Api.salida(S.ses, { diametro: d, cantidad: cant, elemento: e, marca: s.marca, obs: s.obs, fecha: fch }).then(function (r) {
       if (!r.ok) { s.err = r.error; s.msg = ''; render(); return; }
-      s.err = ''; s.cant = 1; s.obs = ''; s.marca = '';
+      s.err = ''; s.cant = 1; s.obs = ''; s.marca = ''; s.fecha = '';
       s.msg = 'Salida registrada: ' + cant + ' × ' + C.diamLabel(d) + ' en ' + e + ' (≈ ' + kg(kgEst) + ' kg)' + (r.pendiente ? '. Sin señal: se enviará sola al volver la conexión.' : '.');
       toast('Salida registrada');
+      S.tab = 'panel'; window.scrollTo(0, 0);
       return cargarEstado();
     });
   }
@@ -452,6 +460,7 @@
   document.addEventListener('input', function (ev) {
     var t = ev.target, i = t.getAttribute('data-i'); if (!i) return;
     if (i === 'sal.obs') S.sal.obs = t.value;
+    else if (i === 'sal.fecha') S.sal.fecha = t.value;
     else if (i === 'sal.cant') {
       var n = parseInt(t.value, 10), max = maxSalida();
       S.sal.cant = isNaN(n) ? 0 : n;
