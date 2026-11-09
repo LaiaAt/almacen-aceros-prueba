@@ -114,25 +114,36 @@ input.mini { width: 90px; padding: 6px 8px; text-align: right; }
 #toast { position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); background: var(--acero); color: #fff; padding: 12px 18px; border-radius: 12px; opacity: 0; transition: .25s; z-index: 50; max-width: 90vw; pointer-events: none; font-size: .92rem; }
 #toast.v { opacity: 1; transform: translate(-50%, 0); }
 
-/* Pantalla de salida (uso muy simple) */
-.paso { font-size: 1.15rem; font-weight: 800; margin: 18px 0 8px; }
-.chip.grande { padding: 16px 18px; min-height: 64px; font-size: 1.15rem; }
-.chip.grande b { font-size: 1.2rem; }
-.posbox { font-size: 3.4rem; font-weight: 800; text-align: center; border: 3px solid var(--line); border-radius: 16px; padding: 6px; min-height: 84px; display: flex; align-items: center; justify-content: center; background: #fff; letter-spacing: 4px; }
-.posbox span { color: #c5ccd3; }
-.posbox.bien { border-color: #1f9d55; background: #eafaf1; } .posbox.mal { border-color: #d64545; background: #fdeeee; }
-.kp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
-.kp button { height: 68px; font-size: 2rem; font-weight: 700; border: 0; border-radius: 16px; background: var(--acero); color: #fff; cursor: pointer; }
-.kp button:active { background: var(--acero2); } .kp button.sec { background: #e9edf1; color: var(--ink); }
-.conf { border-radius: 14px; padding: 12px 14px; font-size: 1.15rem; font-weight: 700; text-align: center; margin: 6px 0; }
-.conf small { font-weight: 500; font-size: 1rem; }
-.conf.bien { background: #eafaf1; color: #14613a; } .conf.mal { background: #fdeeee; color: #a02626; }
-.btn.sacar { background: #1f9d55; font-size: 1.6rem; padding: 22px; margin-top: 8px; letter-spacing: 2px; }
-.btn.sacar:active { background: #167a41; }
-details.mas { margin: 8px 0; } details.mas summary { cursor: pointer; color: var(--mut); padding: 8px 0; }
-
-.carro { background: #f4f7fa; border: 2px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 4px 0 10px; }
-.carro .lin { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 1.05rem; }
-.carro .lin small { display: block; color: var(--mut); font-size: .8rem; }
-.carro .lin button { width: 44px; height: 44px; border: 0; border-radius: 12px; background: #fdeeee; color: #a02626; font-size: 1.2rem; cursor: pointer; flex: none; }
-.btn.agregar { background: var(--acero); font-size: 1.1rem; padding: 16px; margin-top: 8px; }
+/* Pantalla de salida */
+.sal h2 { font-size: 1.15rem; margin-bottom: 14px; }
+.sal .fld label { display: block; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--mut); margin: 0 0 5px; }
+.sal input[type=text], .sal input[type=number], .sal input[type=date], .sal select { padding: 9px 11px; border-radius: 8px; font-size: .95rem; width: 100%; border: 1.5px solid var(--line); background: #fff; color: var(--ink); }
+.sal select:disabled, .sal input:disabled { background: #f3f4f6; color: #9aa4af; }
+.sal .fgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.sal .sec-t { font-size: .8rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acero2); margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.sal .addrow { display: grid; grid-template-columns: 170px minmax(0, 1fr) 150px auto; gap: 12px; align-items: end; }
+.sal #s-pos { font-size: 1.15rem; font-weight: 700; letter-spacing: 1px; }
+.sal #s-pos.bien { border-color: var(--ok); background: #f4fbf7; } .sal #s-pos.mal { border-color: var(--bad); background: #fdf5f5; }
+.sal .pbox { min-height: 40px; display: flex; align-items: center; padding: 0 12px; background: #f6f8fa; border: 1px solid var(--line); border-radius: 8px; font-size: .92rem; }
+.sal .pbox .mal { color: var(--bad); font-weight: 600; }
+.sal .stp { display: flex; }
+.sal .stp button { width: 38px; border: 1.5px solid var(--line); background: #f6f8fa; font-size: 1.15rem; cursor: pointer; color: var(--ink); }
+.sal .stp button:first-child { border-radius: 8px 0 0 8px; border-right: 0; } .sal .stp button:last-child { border-radius: 0 8px 8px 0; border-left: 0; }
+.sal .stp button:disabled { opacity: .45; cursor: not-allowed; }
+.sal .stp input { border-radius: 0; text-align: center; font-weight: 700; min-width: 0; }
+.btn.sm { padding: 10px 14px; font-size: .9rem; border-radius: 8px; white-space: nowrap; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.sal .posl { margin-top: 10px; } .sal .posl summary { cursor: pointer; font-size: .85rem; color: var(--acc2); font-weight: 600; padding: 4px 0; }
+.sal .posl-t { max-height: 230px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; margin-top: 6px; }
+.sal .posl-t table { font-size: .85rem; } .sal .posl-t thead th { position: sticky; top: 0; background: #f6f8fa; }
+.sal .posl-t tbody tr { cursor: pointer; } .sal .posl-t tbody tr:hover { background: #fff3e8; }
+.sal th.n, .sal td.n { text-align: right; }
+.sal table.det { font-size: .9rem; } .sal table.det thead th { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); }
+.sal table.det tfoot td { font-weight: 700; border-top: 2px solid var(--acero); border-bottom: 0; }
+.sal .x { border: 0; background: transparent; color: var(--mut); cursor: pointer; font-size: 1rem; padding: 4px 8px; border-radius: 6px; } .sal .x:hover { background: #fdeeee; color: var(--bad); }
+.sal .vacio-s { padding: 18px; text-align: center; color: var(--mut); background: #f9fafb; border: 1px dashed var(--line); border-radius: 8px; font-size: .9rem; }
+.sal .acc { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+@media (max-width: 640px) { .sal .addrow { grid-template-columns: 1fr 1fr; } .sal .pinfo { grid-column: 1 / -1; order: 3; } .sal .acc { flex-direction: column-reverse; } .sal .acc .btn { width: 100%; } }
+.sal tr.prev td { background: #fff8f0; font-style: italic; } .sal .tagp { font-size: .68rem; color: var(--acc2); font-style: normal; font-weight: 700; }
+.sal .chipd { border: 1.5px solid var(--acc); background: #fff3e8; color: var(--acc2); border-radius: 999px; padding: 3px 10px; font-weight: 700; font-size: .82rem; cursor: pointer; }
+.sal #s-pos::placeholder { font-weight: 400; font-size: .9rem; letter-spacing: 0; }

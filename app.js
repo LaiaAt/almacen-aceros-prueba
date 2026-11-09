@@ -175,30 +175,46 @@
   function enCarrito(e, d, p) {
     return S.sal.items.reduce(function (a, it) { return a + (it.elem === e && it.diam === d && it.pos === p ? it.cant : 0); }, 0);
   }
-  function infoPos(e, d, p) {
-    if (!p) return null;
+  function canonMarca(e, d, p) {
+    var pre = e + '|' + d + '|', q = String(p || '').toLowerCase(), r = '';
+    Object.keys(S.calc.porMarca).forEach(function (k) { if (k.indexOf(pre) === 0 && k.slice(pre.length).toLowerCase() === q) r = k.slice(pre.length); });
+    return r;
+  }
+  function infoPos(e, d, p0) {
+    if (!p0) return null;
+    var p = canonMarca(e, d, p0) || p0;
     var x = S.calc.porMarca[e + '|' + d + '|' + p];
-    if (!x) return { ok: false, txt: 'No existe la posición ' + p };
+    if (!x) return { ok: false, txt: 'No existe la posición ' + p0 };
     var ent = S.estado.entradas.filter(function (z) { return z.estructura === e && z.diametro === d && z.marca === p; })[0] || {};
     if (!(x.sal_p > 0)) return { ok: false, txt: 'De la posición ' + p + ' ya no queda nada' };
     var neto = x.sal_p - enCarrito(e, d, p);
     if (neto <= 0) return { ok: false, txt: 'Ya agregaste todo lo que queda de la posición ' + p };
-    return { ok: true, largo: ent.largo, disp: neto };
+    return { ok: true, marca: p, largo: ent.largo, disp: neto };
+  }
+  function todasElems() {
+    var r = {};
+    S.estado.entradas.forEach(function (x) { r[x.estructura] = 1; });
+    return Object.keys(r).sort();
+  }
+  function candDiams(e, p) {
+    if (!e || !p) return [];
+    return Object.keys(S.calc.porDiam).filter(function (d) { return canonMarca(e, d, p); }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
   }
   function ajustarSalida() {
     var s = S.sal, es = elemsDisp();
-    if (es.indexOf(s.elem) < 0) s.elem = es.length === 1 ? es[0] : '';
-    var ds = s.elem ? diamsDeElem(s.elem) : [];
-    if (ds.indexOf(s.diam) < 0) s.diam = ds.length === 1 ? ds[0] : '';
+    if (!s.elem && es.length === 1) s.elem = es[0];
+    var cands = candDiams(s.elem, s.pos);
+    if (cands.length === 1) s.diam = cands[0];
+    else if (cands.indexOf(s.diam) < 0) s.diam = '';
     var inf = s.elem && s.diam ? infoPos(s.elem, s.diam, s.pos) : null;
-    s.marca = inf && inf.ok ? s.pos : '';
+    s.marca = inf && inf.ok ? inf.marca : '';
     var max = s.marca ? maxSalida() : 0;
     if (!(s.cant >= 1)) s.cant = 1;
     if (max && s.cant > max) s.cant = max;
   }
   function maxSalida() {
     var s = S.sal;
-    return s.elem && s.diam && s.marca ? C.disponible(S.calc, s.elem, s.diam, s.marca).piezas - enCarrito(s.elem, s.diam, s.pos) : 0;
+    return s.elem && s.diam && s.marca ? C.disponible(S.calc, s.elem, s.diam, s.marca).piezas - enCarrito(s.elem, s.diam, s.marca) : 0;
   }
   function resumenSalida() {
     var s = S.sal, max = maxSalida();
@@ -208,46 +224,64 @@
   function vSalida() {
     if (!S.estado.entradas.length) return sinInventario();
     ajustarSalida();
-    var s = S.sal, es = elemsDisp();
-    var h = '<div class="card"><h2>Sacar acero</h2>';
-    if (s.items.length) {
-      h += '<div class="carro"><b>🧾 En esta salida (' + s.items.length + ')</b>' + s.items.map(function (it, i) {
-        return '<div class="lin"><span><b>Pos. ' + esc(it.pos) + '</b> · ' + n0(it.cant) + ' × ' + esc(C.diamLabel(it.diam)) + '<small>' + esc(it.elem) + ' · ' + kg(it.kg) + ' kg</small></span><button data-a="quitar" data-v="' + i + '" aria-label="Quitar">✕</button></div>'; }).join('') + '</div>';
-    }
-    if (!es.length && !s.items.length) return h + '<div class="vacio">No queda acero disponible en el almacén.</div></div>';
-    if (es.length > 1 || !s.elem) {
-      h += '<div class="paso">1 · ¿Qué estructura?</div><div class="chips">' + es.map(function (e) {
-        return '<button class="chip grande' + (s.elem === e ? ' on' : '') + '" data-a="elem" data-v="' + esc(e) + '"><b>' + esc(e) + '</b></button>'; }).join('') + '</div>';
-    } else h += '<div class="paso">📍 ' + esc(s.elem) + '</div>';
+    var s = S.sal, todas = todasElems(), conSaldo = elemsDisp();
+    var h = '<div class="card sal"><h2>Registrar salida de acero</h2>';
+    if (!conSaldo.length && !s.items.length) return h + '<div class="vacio">No queda acero disponible en el almacén.</div></div>';
+    var cands = candDiams(s.elem, s.pos);
+    // 1) Fecha  2) Estructura
+    h += '<div class="fgrid">' +
+      '<div class="fld"><label for="s-fecha">1 · Fecha de la salida</label><input id="s-fecha" type="date" max="' + hoyISO() + '" value="' + esc(s.fecha || hoyISO()) + '" data-i="sal.fecha"></div>' +
+      '<div class="fld" style="grid-column: span 2"><label for="s-elem">2 · Estructura (DLI cargado)</label><select id="s-elem" data-f="sal.elem">' + (s.elem ? '' : '<option value="">Seleccione…</option>') +
+        todas.map(function (e) {
+          var pz = S.calc.porElem[e] ? S.calc.porElem[e].sal_p : 0, ped = {};
+          S.estado.pedidos.forEach(function (p) { if (p.estructura === e) ped[p.pedido] = 1; });
+          return '<option value="' + esc(e) + '"' + (e === s.elem ? ' selected' : '') + (pz > 0 || e === s.elem ? '' : ' disabled') + '>' + esc(e) + ' · pedido ' + esc(Object.keys(ped).join(', ')) + ' · ' + (pz > 0 ? n0(pz) + ' pzs en almacén' : 'sin saldo') + '</option>'; }).join('') + '</select></div></div>';
     if (s.elem) {
-      var ds = diamsDeElem(s.elem);
-      if (ds.length > 1 || !s.diam) {
-        h += '<div class="paso">2 · ¿Qué varilla?</div><div class="chips">' + ds.map(function (d) {
-          return '<button class="chip grande' + (s.diam === d ? ' on' : '') + '" data-a="diam" data-v="' + esc(d) + '"><b>' + esc(C.diamLabel(d)) + '</b></button>'; }).join('') + '</div>';
-      } else h += '<div class="paso">Varilla ' + esc(C.diamLabel(s.diam)) + '</div>';
+      // 3) Posición + 4) Cantidad
+      var inf = s.diam ? infoPos(s.elem, s.diam, s.pos) : null, r = resumenSalida(), txt;
+      if (!s.pos) txt = '<span class="mut">Escriba el código de la posición (ej. 4.06, 2a, 7a.11)</span>';
+      else if (!cands.length) txt = '<span class="mal">No existe la posición ' + esc(s.pos) + ' en esta estructura</span>';
+      else if (cands.length > 1 && !s.diam) txt = '<span class="mut">Existe en varias varillas, elija:</span> ' + cands.map(function (d) { return '<button type="button" class="chipd" data-a="diam" data-v="' + esc(d) + '">' + esc(C.diamLabel(d)) + '</button>'; }).join(' ');
+      else txt = inf.ok ? '<b>' + esc(C.diamLabel(s.diam)) + '</b> · ' + (inf.largo ? inf.largo + ' m' : '—') + ' · quedan ' + n0(inf.disp) + ' · ≈ ' + kg(r.kg) + ' kg' : '<span class="mal">' + esc(inf.txt) + '</span>';
+      var ok = !!s.marca;
+      h += '<div class="sec-t">3 · Posición y cantidad</div><div class="addrow">' +
+        '<div class="fld"><label for="s-pos">Posición (código)</label><input id="s-pos" type="text" inputmode="text" maxlength="8" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Ej. 4.06 o 7a.11" class="' + (s.pos ? (ok ? 'bien' : 'mal') : '') + '" value="' + esc(s.pos) + '" data-i="sal.pos"></div>' +
+        '<div class="fld pinfo"><label>Detalle</label><div class="pbox">' + txt + '</div></div>' +
+        '<div class="fld"><label for="s-cant">Cantidad</label><div class="stp"><button type="button" data-a="menos" aria-label="Menos"' + (ok ? '' : ' disabled') + '>−</button>' +
+          '<input id="s-cant" type="number" inputmode="numeric" min="1" max="' + (ok ? r.max : 1) + '" value="' + s.cant + '" data-i="sal.cant"' + (ok ? '' : ' disabled') + '>' +
+          '<button type="button" data-a="mas" aria-label="Más"' + (ok ? '' : ' disabled') + '>+</button></div></div>' +
+        '<div class="fld"><label>&nbsp;</label><button type="button" class="btn sm sec" data-a="agregar"' + (ok ? '' : ' disabled') + '>Agregar a la salida</button></div></div>';
+      var ms = [];
+      S.estado.entradas.forEach(function (x) {
+        if (x.estructura !== s.elem) return;
+        var k = x.estructura + '|' + x.diametro + '|' + x.marca, v = S.calc.porMarca[k];
+        if (!v || ms.some(function (m) { return m.k === k; })) return;
+        var dsp = v.sal_p - enCarrito(x.estructura, x.diametro, x.marca);
+        if (dsp > 0) ms.push({ k: k, marca: x.marca, diam: x.diametro, largo: x.largo, disp: dsp });
+      });
+      ms.sort(function (a, b) { return C.diamOrder(a.diam) - C.diamOrder(b.diam) || cmpMarca(a.marca, b.marca); });
+      h += '<details class="posl"><summary>Ver posiciones disponibles (' + ms.length + ')</summary><div class="posl-t"><table><thead><tr><th>Pos.</th><th>Varilla</th><th class="n">Largo (m)</th><th class="n">Disponibles</th></tr></thead><tbody>' +
+        ms.map(function (m) { return '<tr data-a="usar" data-v="' + esc(m.marca) + '" data-d="' + esc(m.diam) + '"><td><b>' + esc(m.marca) + '</b></td><td>' + esc(C.diamLabel(m.diam)) + '</td><td class="n">' + (m.largo ? m.largo.toFixed(2) : '—') + '</td><td class="n">' + n0(m.disp) + '</td></tr>'; }).join('') + '</tbody></table></div></details>';
     }
-    if (s.elem && s.diam) {
-      var inf = infoPos(s.elem, s.diam, s.pos);
-      h += '<div class="paso">3 · Número de la etiqueta</div><div class="posbox' + (inf ? (inf.ok ? ' bien' : ' mal') : '') + '">' + (s.pos ? esc(s.pos) : '<span>?</span>') + '</div>';
-      h += '<div class="kp">' + ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(function (n) { return '<button data-a="tecla" data-v="' + n + '">' + n + '</button>'; }).join('') +
-        '<button class="sec" data-a="borrar" aria-label="Borrar">⌫</button><button data-a="tecla" data-v="0">0</button><button class="sec" data-a="limpiar" aria-label="Limpiar">✕</button></div>';
-      if (inf) h += inf.ok
-        ? '<div class="conf bien">✅ Posición ' + esc(s.pos) + ' · ' + esc(C.diamLabel(s.diam)) + (inf.largo ? ' · ' + inf.largo + ' m' : '') + '<br><small>Quedan ' + n0(inf.disp) + '</small></div>'
-        : '<div class="conf mal">❌ ' + esc(inf.txt) + '</div>';
-      if (s.marca) {
-        var r = resumenSalida();
-        h += '<div class="paso">4 · ¿Cuántas varillas?</div><div class="step"><button data-a="menos" aria-label="Menos">−</button>' +
-          '<input id="s-cant" type="number" inputmode="numeric" min="1" max="' + r.max + '" value="' + s.cant + '" data-i="sal.cant"><button data-a="mas" aria-label="Más">+</button></div>' +
-          '<div class="resumen"><div><small>Quedan</small><b id="r-disp">' + n0(r.max) + ' pzs</b></div><div class="der"><small>Peso aprox.</small><b id="r-kg">' + kg(r.kg) + ' kg</b></div></div>' +
-          '';
-        h += '<button class="btn blk agregar" data-a="agregar">➕ AGREGAR OTRA POSICIÓN</button>';
-      }
-    }
+    // 5) Carrito
+    h += '<div class="sec-t">4 · Posiciones de esta salida</div>';
+    var cur = s.marca ? itemActual() : null;
+    if (s.items.length || cur) {
+      var tp = 0, tk = 0;
+      var fila = function (it, i, prev) {
+        tp += it.cant; tk += it.kg;
+        return '<tr' + (prev ? ' class="prev"' : '') + '><td><b>' + esc(it.pos) + '</b></td><td>' + esc(C.diamLabel(it.diam)) + '</td><td>' + esc(it.elem) + '</td><td class="n">' + (it.largo ? it.largo.toFixed(2) : '—') + '</td><td class="n">' + n0(it.cant) + '</td><td class="n">' + kg(it.kg) + '</td>' +
+          '<td class="n">' + (prev ? '<span class="tagp">sin agregar</span>' : '<button type="button" class="x" data-a="quitar" data-v="' + i + '" aria-label="Quitar">✕</button>') + '</td></tr>';
+      };
+      h += '<div class="tw"><table class="det"><thead><tr><th>Pos.</th><th>Varilla</th><th>Estructura</th><th class="n">Largo (m)</th><th class="n">Cant.</th><th class="n">Peso aprox. (kg)</th><th></th></tr></thead><tbody>' +
+        s.items.map(function (it, i) { return fila(it, i, false); }).join('') + (cur ? fila(cur, -1, true) : '') +
+        '</tbody><tfoot><tr><td colspan="4">Total</td><td class="n">' + n0(tp) + '</td><td class="n">' + kg(tk) + '</td><td></td></tr></tfoot></table></div>';
+    } else h += '<div class="vacio-s">Aún no hay posiciones en esta salida.</div>';
+    h += '<div class="fld" style="margin-top:12px"><label for="s-obs">Nota (opcional)</label><input id="s-obs" type="text" maxlength="120" placeholder="Ej. losa de fondo, turno noche" value="' + esc(s.obs) + '" data-i="sal.obs"></div>';
     if (s.err) h += '<div class="error">' + esc(s.err) + '</div>';
-    var nEnv = s.items.length + (s.marca ? 1 : 0), nEnvD = nEnv;
-    if (nEnvD) h += '<details class="mas"><summary>📅 Fecha y nota</summary><label class="f" for="s-fecha">Fecha de salida</label><input id="s-fecha" type="date" max="' + hoyISO() + '" value="' + esc(s.fecha || hoyISO()) + '" data-i="sal.fecha">' +
-          '<label class="f" for="s-obs">Nota (opcional)</label><input id="s-obs" type="text" maxlength="120" placeholder="Ej. losa fondo" value="' + esc(s.obs) + '" data-i="sal.obs"></details>';
-    if (nEnv) h += '<button class="btn blk sacar" data-a="registrarSalida">' + (nEnv > 1 ? 'SACAR TODO (' + nEnv + ')' : 'SACAR') + '</button>';
+    var nEnv = s.items.length + (s.marca ? 1 : 0);
+    h += '<div class="acc">' + (s.items.length ? '<button type="button" class="btn sec" data-a="vaciar">Vaciar lista</button>' : '') +
+      '<button type="button" class="btn" data-a="registrarSalida"' + (nEnv ? '' : ' disabled') + '>Sacar' + (nEnv ? ' (' + nEnv + (nEnv === 1 ? ' posición)' : ' posiciones)') : '') + '</button></div>';
     if (s.msg) h += '<div class="ok">' + esc(s.msg) + '</div>';
     return h + '</div>';
   }
@@ -364,7 +398,9 @@
     var app = $('app');
     if (!S.ses) { app.innerHTML = vLogin(); return; }
     S.calc = C.calcular(S.estado);
+    var fo = S.focus; S.focus = '';
     app.innerHTML = '<div class="cab">' + vTop() + vTabs() + '</div>' + vBandas() + '<main>' + vista() + '</main><div class="pie">Almacén de aceros · versión de prueba · Autor: Carlos Eduardo Bermúdez Castro</div>';
+    if (fo && $(fo)) { var el = $(fo); el.focus(); try { el.select(); } catch (e) { } }
   }
 
   // ---------- Acciones ----------
@@ -420,22 +456,23 @@
 
   function itemActual() {
     var s = S.sal;
-    return { id: '', elem: s.elem, diam: s.diam, pos: s.pos, marca: s.marca, cant: s.cant, kg: C.kgSalida(S.calc, s.elem, s.diam, s.cant, s.marca) };
+    var ip = infoPos(s.elem, s.diam, s.marca) || {};
+    return { id: '', largo: ip.largo || 0, elem: s.elem, diam: s.diam, pos: s.marca, marca: s.marca, cant: s.cant, kg: C.kgSalida(S.calc, s.elem, s.diam, s.cant, s.marca) };
   }
   function agregarItem() {
     var s = S.sal;
-    if (!s.marca) { s.err = 'Escriba el número de la etiqueta.'; render(); return; }
+    if (!s.marca) { s.err = 'Escriba el código de la posición.'; render(); return; }
     var it = itemActual();
     var ya = s.items.filter(function (x) { return x.elem === it.elem && x.diam === it.diam && x.pos === it.pos; })[0];
     if (ya) { ya.cant += it.cant; ya.kg = C.kgSalida(S.calc, ya.elem, ya.diam, ya.cant, ya.marca); }
     else s.items.push(it);
     s.pos = ''; s.marca = ''; s.cant = 1; s.err = ''; s.msg = '';
-    render(); window.scrollTo(0, 0);
+    S.focus = 's-pos'; render();
   }
   function registrarSalida() {
     var s = S.sal, lista = s.items.slice(), actual = null;
     if (s.marca) { actual = itemActual(); lista.push(actual); }
-    if (!lista.length) { s.err = 'Escriba el número de la etiqueta.'; s.msg = ''; render(); return; }
+    if (!lista.length) { s.err = 'Escriba el código de la posición.'; s.msg = ''; render(); return; }
     for (var i = 0; i < lista.length; i++) {
       var err = C.validarSalida(S.calc, lista[i].elem, lista[i].diam, lista[i].cant, lista[i].marca);
       if (err) { s.err = 'Posición ' + lista[i].pos + ': ' + err; s.msg = ''; render(); return; }
@@ -492,12 +529,11 @@
       case 'refrescar': cargarEstado().then(function () { toast('Actualizado'); }); break;
       case 'salir': Api.salir(); S.ses = null; S.loginErr = ''; render(); break;
       case 'elem': S.sal.elem = v; S.sal.diam = ''; S.sal.pos = ''; S.sal.marca = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); break;
-      case 'diam': S.sal.diam = v; S.sal.pos = ''; S.sal.marca = ''; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); break;
+      case 'diam': S.sal.diam = v; S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); break;
       case 'agregar': agregarItem(); break;
       case 'quitar': S.sal.items.splice(+v, 1); S.sal.err = ''; render(); break;
-      case 'tecla': if (S.sal.pos.length < 3) { S.sal.pos = (S.sal.pos + v).replace(/^0+(?=\d)/, ''); S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; render(); } break;
-      case 'borrar': S.sal.pos = S.sal.pos.slice(0, -1); S.sal.cant = 1; S.sal.err = ''; render(); break;
-      case 'limpiar': S.sal.pos = ''; S.sal.cant = 1; S.sal.err = ''; render(); break;
+      case 'usar': S.sal.pos = v; S.sal.diam = el.getAttribute('data-d') || S.sal.diam; S.sal.cant = 1; S.sal.err = ''; S.focus = 's-cant'; render(); break;
+      case 'vaciar': S.sal.items = []; S.sal.err = ''; render(); break;
       case 'mas': S.sal.cant = Math.min((S.sal.cant || 0) + 1, maxSalida() || 1); render(); break;
       case 'menos': S.sal.cant = Math.max((S.sal.cant || 1) - 1, 1); render(); break;
       case 'registrarSalida': registrarSalida(); break;
@@ -529,6 +565,9 @@
     var f = t.getAttribute('data-f');
     if (f) {
       var p = f.split('.'); S[p[0]][p[1]] = t.value;
+      if (f === 'sal.elem') { S.sal.diam = ''; S.sal.pos = ''; S.sal.cant = 1; }
+      if (f === 'sal.diam') { S.sal.pos = ''; S.sal.cant = 1; }
+      S.sal.err = ''; S.sal.msg = '';
       render(); return;
     }
     var lg = t.getAttribute('data-largo');
@@ -547,6 +586,7 @@
   document.addEventListener('input', function (ev) {
     var t = ev.target, i = t.getAttribute('data-i'); if (!i) return;
     if (i === 'sal.obs') S.sal.obs = t.value;
+    else if (i === 'sal.pos') { S.sal.pos = t.value.replace(/[^A-Za-z0-9.]/g, '').slice(0, 8); S.sal.cant = 1; S.sal.err = ''; S.sal.msg = ''; S.focus = 's-pos'; render(); var e2 = $('s-pos'); if (e2) { try { e2.setSelectionRange(e2.value.length, e2.value.length); } catch (x) { } } }
     else if (i === 'sal.fecha') S.sal.fecha = t.value;
     else if (i === 'sal.cant') {
       var n = parseInt(t.value, 10), max = maxSalida();
@@ -557,6 +597,12 @@
       var m = /^carga\.(\d+)\.pedido$/.exec(i);
       if (m && S.cargas[+m[1]]) S.cargas[+m[1]].pedido = t.value;
     }
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter') return;
+    if (ev.target.id === 's-pos') { ev.preventDefault(); if (S.sal.marca) { var c = $('s-cant'); if (c) { c.focus(); c.select(); } } }
+    else if (ev.target.id === 's-cant') { ev.preventDefault(); if (S.sal.marca) agregarItem(); }
   });
 
   document.addEventListener('submit', function (ev) {

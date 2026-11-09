@@ -221,34 +221,13 @@
   }
 
   /** Convierte un despiece leído en filas de entrada para el inventario. */
-  // Posición = número de la etiqueta del listado para estribadora: dentro de cada diámetro, las barras iguales
-  // (mismo largo y misma forma) forman una posición y se numeran de mayor a menor largo.
-  // El .dli no guarda la posición; se reconstruye. En empates de largo el orden puede variar.
-  function asignarPosiciones(rows) {
-    const porDiam = {};
-    rows.forEach((r) => { (porDiam[r.diametro] = porDiam[r.diametro] || []).push(r); });
-    const grupos = [];
-    Object.keys(porDiam).forEach((d) => {
-      const g = new Map();
-      porDiam[d].forEach((r) => {
-        const k = (r.largo || 0).toFixed(2) + '|' + String(r.forma || '').replace(/[0-9.]+/g, '#').split('·')[0].trim();
-        if (!g.has(k)) g.set(k, { diametro: d, largo: r.largo || 0, rows: [] });
-        g.get(k).rows.push(r);
-      });
-      const L = [...g.values()].sort((a, b) => (b.largo - a.largo) || (a.rows[0].marca < b.rows[0].marca ? 1 : a.rows[0].marca > b.rows[0].marca ? -1 : 0));
-      L.forEach((x, i) => { x.pos = i + 1; x.empate = L.some((y) => y !== x && Math.abs(y.largo - x.largo) < 0.005); grupos.push(x); });
-    });
-    return grupos;
-  }
-
+  // La posición es el código de cada línea del DLI (marca alfanumérica: 4.06, 2a, 7a.11…).
   function aEntradas(parsed, pedido, loadId, fecha) {
-    return asignarPosiciones(parsed.rows).map((g) => {
-      const cantidad = g.rows.reduce((a, r) => a + r.cantidad, 0);
-      const kg = r3(g.rows.reduce((a, r) => a + r.kg, 0));
-      return { loadId, pedido: String(pedido).trim(), estructura: parsed.nombre, marca: String(g.pos),
-        diametro: g.diametro, cantidad, largo: g.largo, kgUnit: cantidad ? r3(kg / cantidad) : 0, kg, fecha };
-    });
+    return parsed.rows.map((r) => ({
+      loadId, pedido: String(pedido).trim(), estructura: parsed.nombre, marca: r.marca,
+      diametro: r.diametro, cantidad: r.cantidad, largo: r.largo, kgUnit: r.kgUnit, kg: r.kg, fecha
+    }));
   }
 
-  return { PESOS, NUMERO, parseDLI, recalcular, totales, calcular, disponible, kgSalida, validarSalida, aEntradas, asignarPosiciones, diamLabel, diamOrder, normDiam, r2, r3 };
+  return { PESOS, NUMERO, parseDLI, recalcular, totales, calcular, disponible, kgSalida, validarSalida, aEntradas, diamLabel, diamOrder, normDiam, r2, r3 };
 });
