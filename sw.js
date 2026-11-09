@@ -1,7 +1,7 @@
 /* Almacén de aceros (prueba) — service worker. Autor: Carlos Eduardo Bermúdez Castro
  * Guarda la app para abrirla sin señal. Las llamadas al servidor (Apps Script) nunca se guardan aquí.
  * Cambie VERSION cada vez que publique una versión nueva para que los celulares la actualicen. */
-var VERSION = 'aceros-v6';
+var VERSION = 'aceros-v7';
 var ARCHIVOS = ['./', 'index.html', 'style.css', 'core.js', 'config.js', 'api.js', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
 
@@ -17,7 +17,7 @@ self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   // Primero la red (para recibir versiones nuevas); si no hay señal, lo guardado.
-  e.respondWith(fetch(req).then(function (res) {
+  e.respondWith(fetch(req, { cache: 'no-cache' }).then(function (res) {
     var copia = res.clone();
     caches.open(VERSION).then(function (c) { c.put(req, copia); });
     return res;
