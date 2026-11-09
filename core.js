@@ -128,7 +128,7 @@
         forma = 'Estribo ' + mm[3] + '×' + mm[4] + ' gancho ' + mm[5];
       } else {
         const c = /^(\d+)\s+(.*)$/.exec(dato);
-        cant = c ? +c[1] : 0; diam = (/"([^"]+)"|\s(\d[\d\/\-]*)''/.exec(dato) || [])[1] || '';
+        cant = c ? +c[1] : 0; const dm = /"([^"]+)"|\s(\d[\d\/\-]*)''/.exec(dato) || []; diam = dm[1] || dm[2] || '';
         diam = normDiam(diam); forma = dato;
         aviso = 'Forma no reconocida: indique el largo a mano';
       }
