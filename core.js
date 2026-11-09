@@ -74,6 +74,7 @@
   const RE_MARCA = /^\d+[a-z]?(?:\.\d+)?$/;
   const RE_RECTA = /^(\d+)\s+"([^"]+)"\s+([0-9.]+)\s*(.*)$/;
   const RE_PATA = /^(\d+)\s+P\s+"?([^"\s]+)"?\s+([\d.]+)\/(-?[\d.]+)\s+([\d.]+)X\s+([\d.]+)\/(-?[\d.]+)/;
+  const RE_PFORMA = /^(\d+)\s+P\s+"?([^"\s]+?)(?:'')?"?\s+((?:-?[\d.]+X?\s*)+)$/;
   const RE_ESTRIBO = /^(\d+)\s+E\s+"([^"]+)"\s+([\d.]*)\*([\d.]+)\s+G([\d.]+)/;
 
   /** Lee un .dli (Uint8Array) y devuelve las piezas con su cantidad, largo y peso. */
@@ -126,6 +127,11 @@
         cant = +mm[1]; diam = normDiam(mm[2]);
         largo = r2(2 * (+('0' + mm[3]) + +mm[4]) + 2 * +mm[5]);
         forma = 'Estribo ' + mm[3] + '×' + mm[4] + ' gancho ' + mm[5];
+      } else if ((mm = RE_PFORMA.exec(dato))) {
+        // Forma "P ø a X b c": el largo es la suma de todos sus tramos (verificado contra el peso total del DLI)
+        cant = +mm[1]; diam = normDiam(mm[2]);
+        largo = r2((mm[3].match(/-?\d*\.?\d+/g) || []).reduce((t, x) => t + Math.abs(+x), 0));
+        forma = 'Forma ' + mm[3].replace(/\s+/g, ' ').trim();
       } else {
         const c = /^(\d+)\s+(.*)$/.exec(dato);
         cant = c ? +c[1] : 0; const dm = /"([^"]+)"|\s(\d[\d\/\-]*)''/.exec(dato) || []; diam = dm[1] || dm[2] || '';
@@ -145,7 +151,12 @@
     if (!rows.length) avisos.push('No se encontraron piezas en el archivo.');
     rows.forEach((r) => { if (r.aviso) avisos.push('Marca ' + r.marca + ': ' + r.aviso); });
 
-    return { archivo: nombreArchivo || '', nombre, descripcion, empresa, proyecto, declarado, rows, avisos, ...totales(rows) };
+    // Peso total que declara el propio DLI (cabecera) → control cruzado
+    const mp = /PREFERENCIAS DIBUJOS(?:\s+-?[\d.]+){13}\s+([\d.]+)/.exec(s.slice(0, 1500));
+    const kgDLI = mp ? parseFloat(mp[1]) : null;
+    const kgApp = totales(rows).totalKg;
+    if (kgDLI && Math.abs(kgApp - kgDLI) / kgDLI > 0.005 && !rows.some((r) => r.aviso)) avisos.push('El peso calculado (' + kgApp + ' kg) difiere del declarado en el DLI (' + kgDLI + ' kg).');
+    return { archivo: nombreArchivo || '', nombre, kgDLI, descripcion, empresa, proyecto, declarado, rows, avisos, ...totales(rows) };
   }
 
   function recalcular(rows) {
