@@ -507,8 +507,9 @@
     var ks = Object.keys(ini).filter(function (k) { return ini[k].p > 0; }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
     var nEst = {}; arm.forEach(function (x) { nEst[x.elemento] = 1; });
     var fin = C.calcular({ pedidos: S.estado.pedidos, entradas: S.estado.entradas.filter(function (e) { return fd(e) <= dia; }), salidas: S.estado.salidas.filter(function (x) { return fd(x) <= dia; }) });
+    var ini0 = C.calcular({ pedidos: S.estado.pedidos, entradas: S.estado.entradas.filter(function (e) { return fd(e) < dia; }), salidas: S.estado.salidas.filter(function (x) { return fd(x) < dia; }) });
     return {
-      fin: fin, M: M, armP: arm.reduce(function (a, x) { return a + (+x.cantidad || 0); }, 0), dia: dia, ini: ini, ks: ks, hoyEnt: hoyEnt, armG: agrupar(arm, false), salG: agrupar(sal, true), nEst: Object.keys(nEst).length,
+      ini0: ini0, fin: fin, M: M, armP: arm.reduce(function (a, x) { return a + (+x.cantidad || 0); }, 0), dia: dia, ini: ini, ks: ks, hoyEnt: hoyEnt, armG: agrupar(arm, false), salG: agrupar(sal, true), nEst: Object.keys(nEst).length,
       kgArm: arm.reduce(function (a, x) { return a + (+x.kg || 0); }, 0), kgSal: sal.reduce(function (a, x) { return a + (+x.kg || 0); }, 0)
     };
   }
@@ -517,7 +518,7 @@
     return '<div class="card inf-ctl"><h2 style="margin-top:0">Informe del día</h2><label class="f" style="margin:0">Fecha<input type="date" max="' + hoyISO() + '" value="' + esc(dia) + '" data-f="inf.d"></label>' +
       '<div class="inf-res"><div><b>' + D.nEst + '</b><small>estructuras armadas</small></div><div><b>' + kg(D.kgArm) + '</b><small>kg armados</small></div><div><b>' + kg(D.kgSal) + '</b><small>kg que salieron</small></div></div>' +
       '<button class="btn blk" data-a="bajarInforme">⬇️ Descargar informe (PDF)</button>' +
-      '<p class="peq mut">Parte diario de armado por estructura del día elegido. Oficiales y ayudantes: ver el Parte diario.</p></div>';
+      '<p class="peq mut">Parte diario de armado por estructura del día elegido. Personal (oficiales y ayudantes): se toma del Parte diario con la llave del usuario.</p></div>';
   }
   function descargarInforme() {
     var dia = S.inf.d || hoyISO(), D = datosInforme(dia), P = new MiniPdf('Parte diario de producción - Taller de acero ' + dia, 'Carlos Eduardo Bermúdez Castro');
@@ -543,19 +544,30 @@
     var meta = [['FECHA', d[2] + '/' + d[1] + '/' + d[0]], ['ESTRUCTURAS ARMADAS', String(D.nEst)], ['ARMADO', kg(D.kgArm) + ' kg'], ['SALIÓ', kg(D.kgSal) + ' kg']], mw = [110, 150, 130, 133], mx = M;
     meta.forEach(function (m, i) { P.rect(mx, y, mw[i], 22, CLARO, [0, 0, 0]); P.texto(mx + 4, y + 8, m[0], 6.5, true); P.texto(mx + 4, y + 18, m[1], 9.5, true); mx += mw[i]; });
     y += 22;
-    P.texto(M, y + 11, 'Oficiales y ayudantes: ver el Parte diario del día (aplicación de parte diario).', 8, false, [0.25, 0.25, 0.25]); y += 18;
+    P.texto(M, y + 11, 'Personal (oficiales y ayudantes): se toma del Parte diario del día, con la llave de este usuario.', 8, false, [0.25, 0.25, 0.25]); y += 18;
     // 1) almacén al iniciar
-    banda('1 · ACERO EN EL ALMACÉN AL INICIAR EL DÍA');
-    if (D.ks.length) {
-      var cw = (AN - 70) / (D.ks.length + 1), fil = [['#Varilla', D.ks.map(numVar).concat(['Total'])],
-        ['Piezas', D.ks.map(function (k) { return n0(D.ini[k].p); }).concat([n0(D.ks.reduce(function (a, k) { return a + D.ini[k].p; }, 0))])],
-        ['Kg', D.ks.map(function (k) { return kg(D.ini[k].kg); }).concat([kg(D.ks.reduce(function (a, k) { return a + D.ini[k].kg; }, 0))])]];
-      fil.forEach(function (f, r) {
-        celda(M, 70, 16, [{ t: f[0], b: true }], { fill: CLARO });
-        f[1].forEach(function (v, c) { celda(M + 70 + c * cw, cw, 16, [{ t: v, b: r === 0 || c === f[1].length - 1 }], { al: 'c', fill: r === 0 ? CLARO : null }); });
-        y += 16;
+    function tabla4(titulo, primera, claves, mapa) {
+      var W4 = [165, 52, 70, 52, 70, 52, 62];
+      function cab4() { var x = M, T = [primera, 'Libre pzs', 'Libre kg', 'Armado pzs', 'Armado kg', 'Total pzs', 'Total kg']; T.forEach(function (t, i) { celda(x, W4[i], 16, [{ t: t, b: true, size: 7 }], { fill: CLARO, al: i ? 'c' : 'l', size: 7 }); x += W4[i]; }); y += 16; }
+      if (y + 17 + 16 + 20 > FIN) pagina();
+      banda(titulo); cab4();
+      var T0 = { lib_p: 0, lib_kg: 0, arm_p: 0, arm_kg: 0, sal_p: 0, sal_kg: 0 };
+      claves.forEach(function (k) {
+        var q = mapa[k], ln = P.partir(k === '__' ? '' : (primera === '#Varilla' ? C.diamLabel(k) : k), W4[0] - 6, 8, false), h = Math.max(16, ln.length * 10.5 + 6);
+        if (y + h > FIN) { pagina(); cab4(); }
+        var vals = [q.lib_p, q.lib_kg, q.arm_p, q.arm_kg, q.sal_p, q.sal_kg], x = M;
+        celda(x, W4[0], h, ln.map(function (t) { return { t: t, size: 8 }; }), { size: 8 }); x += W4[0];
+        vals.forEach(function (v, i) { celda(x, W4[i + 1], h, [{ t: i % 2 ? kg(v) : n0(v), size: 8, b: i >= 4 }], { al: 'r', size: 8 }); x += W4[i + 1]; });
+        y += h; Object.keys(T0).forEach(function (f) { T0[f] += q[f] || 0; });
       });
-    } else { P.rect(M, y, AN, 18, null, [0, 0, 0]); P.texto(M + 6, y + 12, 'No había acero en el almacén al iniciar el día.', 8.5); y += 18; }
+      if (y + 16 > FIN) { pagina(); cab4(); }
+      var x2 = M; celda(x2, W4[0], 16, [{ t: 'TOTAL', b: true }], { fill: CLARO }); x2 += W4[0];
+      [T0.lib_p, T0.lib_kg, T0.arm_p, T0.arm_kg, T0.sal_p, T0.sal_kg].forEach(function (v, i) { celda(x2, W4[i + 1], 16, [{ t: i % 2 ? kg(v) : n0(v), b: true, size: 8 }], { fill: CLARO, al: 'r' }); x2 += W4[i + 1]; });
+      y += 16 + 10;
+    }
+    var F0 = D.ini0, k0 = Object.keys(F0.porDiam).filter(function (k) { return F0.porDiam[k].sal_p > 0; }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
+    if (k0.length) tabla4('1 · ACERO EN EL ALMACÉN AL INICIAR EL DÍA · POR VARILLA', '#Varilla', k0, F0.porDiam);
+    else { banda('1 · ACERO EN EL ALMACÉN AL INICIAR EL DÍA'); P.rect(M, y, AN, 18, null, [0, 0, 0]); P.texto(M + 6, y + 12, 'No había acero en el almacén al iniciar el día.', 8.5); y += 28; }
     if (D.hoyEnt.p) { P.texto(M, y + 11, 'Además llegaron en el día: ' + n0(D.hoyEnt.p) + ' piezas (' + kg(D.hoyEnt.kg) + ' kg).', 8, false, [0.25, 0.25, 0.25]); y += 15; }
     y += 8;
     // 2) y 3) tablas con filas que se ajustan
@@ -564,7 +576,7 @@
     function tabla(titulo, G, vacio) {
       if (y + 17 + 16 + 24 > FIN) pagina();
       banda(titulo); cabecera();
-      if (!G.length) { P.rect(M, y, AN, 18, null, [0, 0, 0]); P.texto(M + 6, y + 12, vacio, 8.5); y += 18; return; }
+      if (!G.length) { P.rect(M, y, AN, 18, null, [0, 0, 0]); P.texto(M + 6, y + 12, vacio, 8.5); y += 28; return; }
       var tp_ = 0, tk = 0;
       G.forEach(function (r) {
         var L1 = P.partir(r.e, CW[1] - 6, 8.5, true).map(function (t) { return { t: t, b: true }; });
@@ -603,25 +615,6 @@
     y += oH + 10;
     // almacén actualizado al cierre
     var F = D.fin;
-    function tabla4(titulo, primera, claves, mapa) {
-      var W4 = [165, 52, 70, 52, 70, 52, 62];
-      function cab4() { var x = M, T = [primera, 'Libre pzs', 'Libre kg', 'Armado pzs', 'Armado kg', 'Total pzs', 'Total kg']; T.forEach(function (t, i) { celda(x, W4[i], 16, [{ t: t, b: true, size: 7 }], { fill: CLARO, al: i ? 'c' : 'l', size: 7 }); x += W4[i]; }); y += 16; }
-      if (y + 17 + 16 + 20 > FIN) pagina();
-      banda(titulo); cab4();
-      var T0 = { lib_p: 0, lib_kg: 0, arm_p: 0, arm_kg: 0, sal_p: 0, sal_kg: 0 };
-      claves.forEach(function (k) {
-        var q = mapa[k], ln = P.partir(k === '__' ? '' : (primera === '#Varilla' ? C.diamLabel(k) : k), W4[0] - 6, 8, false), h = Math.max(16, ln.length * 10.5 + 6);
-        if (y + h > FIN) { pagina(); cab4(); }
-        var vals = [q.lib_p, q.lib_kg, q.arm_p, q.arm_kg, q.sal_p, q.sal_kg], x = M;
-        celda(x, W4[0], h, ln.map(function (t) { return { t: t, size: 8 }; }), { size: 8 }); x += W4[0];
-        vals.forEach(function (v, i) { celda(x, W4[i + 1], h, [{ t: i % 2 ? kg(v) : n0(v), size: 8, b: i >= 4 }], { al: 'r', size: 8 }); x += W4[i + 1]; });
-        y += h; Object.keys(T0).forEach(function (f) { T0[f] += q[f] || 0; });
-      });
-      if (y + 16 > FIN) { pagina(); cab4(); }
-      var x2 = M; celda(x2, W4[0], 16, [{ t: 'TOTAL', b: true }], { fill: CLARO }); x2 += W4[0];
-      [T0.lib_p, T0.lib_kg, T0.arm_p, T0.arm_kg, T0.sal_p, T0.sal_kg].forEach(function (v, i) { celda(x2, W4[i + 1], 16, [{ t: i % 2 ? kg(v) : n0(v), b: true, size: 8 }], { fill: CLARO, al: 'r' }); x2 += W4[i + 1]; });
-      y += 16 + 10;
-    }
     var kd = Object.keys(F.porDiam).filter(function (k) { return F.porDiam[k].sal_p > 0; }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
     var ke = Object.keys(F.porElem).filter(function (k) { return F.porElem[k].sal_p > 0; }).sort();
     if (kd.length) {
