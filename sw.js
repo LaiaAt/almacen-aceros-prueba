@@ -1,7 +1,7 @@
 /* Almacén de aceros (prueba) — service worker. Autor: Carlos Eduardo Bermúdez Castro
  * Guarda la app para abrirla sin señal. Las llamadas al servidor (Apps Script) nunca se guardan aquí.
  * Cambie VERSION cada vez que publique una versión nueva para que los celulares la actualicen. */
-var VERSION = 'aceros-v24';
+var VERSION = 'aceros-v25';
 var ARCHIVOS = ['./', 'index.html', 'style.css', 'core.js', 'config.js', 'api.js', 'app.js', 'sw-registro.js', 'modo.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
 

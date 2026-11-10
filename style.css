@@ -322,3 +322,52 @@ details.pedidos summary { font-weight: 700; color: var(--navy); font-size: 1rem;
   .inf-t th,.inf-t td{padding:4px 5px}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+/* ===== v4: más contraste + panel gerencial ===== */
+:root { --bg: #dfe5ec; --line: #94a3b8; --acc: #ea580c; --acc2: #c2410c; }
+html, body { background: var(--bg); }
+.card { border: 2px solid #94a3b8; box-shadow: 0 3px 10px rgba(15,23,42,.14); }
+.top { border-bottom: 3px solid var(--acc); }
+.tabs { background: #cbd5e1; gap: 3px; padding: 4px; border-bottom: 0; }
+.tabs button { background: #fff; border: 2px solid #64748b; border-bottom-width: 2px; border-radius: 12px; color: var(--navy); font-weight: 700; padding: 8px 2px 6px; }
+.tabs button.on { background: var(--navy); color: #fff; border-color: var(--navy); box-shadow: 0 3px 0 var(--acc); }
+.btn { background: var(--acc); color: #fff; border: 2px solid #9a3412; box-shadow: 0 3px 0 #9a3412; font-weight: 800; letter-spacing: .01em; }
+.btn:active { background: var(--acc2); transform: translateY(2px); box-shadow: 0 1px 0 #9a3412; }
+.btn.sec { background: #fff; color: var(--navy); border: 2px solid var(--navy); box-shadow: 0 3px 0 var(--navy); }
+.btn.sec:active { background: #e2e8f0; box-shadow: 0 1px 0 var(--navy); }
+.btn.peligro { background: #b91c1c; border-color: #7f1d1d; box-shadow: 0 3px 0 #7f1d1d; color: #fff; }
+.btn.chico { box-shadow: 0 2px 0 rgba(0,0,0,.35); }
+.btn[disabled] { opacity: .45; box-shadow: none; }
+.seg { background: #cbd5e1; border: 2px solid #64748b; }
+.seg button { color: var(--navy); font-weight: 700; }
+.seg button.on { background: var(--navy); color: #fff; box-shadow: none; }
+.fc { border: 2px solid #475569 !important; color: var(--navy); font-weight: 700; background: #fff; }
+.fc.on { background: var(--navy) !important; color: #fff !important; border-color: var(--navy) !important; }
+input[type=text], input[type=search], input[type=date], input[type=password], input[type=number], select, textarea { border: 2px solid #475569; background: #fff; }
+input:focus, select:focus { border-color: var(--acc); box-shadow: 0 0 0 4px rgba(234,88,12,.3); }
+.sal .rr .b1, .sal .rr .bt { border: 2px solid var(--navy); background: #fff; color: var(--navy); font-weight: 800; }
+.sal .rr .b1:active, .sal .rr .bt:active { background: var(--navy); color: #fff; }
+.banda.warn { background: #fde68a; color: #422006; border-bottom: 2px solid #b45309; font-weight: 600; }
+.tp { border-color: #64748b; }
+.mv, .ec { border: 2px solid #94a3b8; }
+.gr h3 { font-size: 1.05rem; margin: 0 0 10px; color: var(--navy); }
+.dn-w { display: flex; align-items: center; gap: 14px; }
+.dn { width: 150px; flex: none; } .dn-n { font-size: 8px; font-weight: 800; fill: #0f172a; } .dn-s { font-size: 3.4px; fill: #475569; }
+.dn-l { display: flex; flex-direction: column; gap: 10px; flex: 1; font-size: 1rem; }
+.dn-l div { display: grid; grid-template-columns: 16px auto; column-gap: 8px; align-items: center; } .dn-l b { font-size: 1.15rem; } .dn-l small { grid-column: 2; color: #475569; font-size: .8rem; }
+i.lib { background: #16a34a; } i.arm { background: #f59e0b; } i.out { background: #2563eb; }
+.dn-l i, .ley i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; margin-right: 6px; border: 1px solid rgba(0,0,0,.3); }
+.dn-l i { margin: 0; }
+.ley { display: flex; gap: 14px; flex-wrap: wrap; font-size: .85rem; font-weight: 700; color: var(--navy); margin: 4px 0 10px; }
+.tr { width: 100%; height: auto; } .tx { font-size: 9px; fill: #334155; font-weight: 700; }
+.bh-r { margin: 0 0 12px; } .bh-t { display: flex; justify-content: space-between; gap: 8px; font-size: .98rem; margin-bottom: 4px; } .bh-t span { font-weight: 800; color: var(--navy); }
+.bh { display: flex; height: 20px; background: #e2e8f0; border: 1px solid #64748b; border-radius: 6px; overflow: hidden; } .bh i { display: block; height: 100%; }
+.bh-r small { color: #475569; font-size: .78rem; }
+.tabs { overflow-x: auto; scrollbar-width: none; } .tabs::-webkit-scrollbar { display: none; }
+.tabs button { flex: 1 0 68px; min-width: 68px; font-size: .74rem; }
+.tabs button span { font-size: 1.4rem; }
+.dn-l div { display: block; line-height: 1.25; } .dn-l small { display: block; margin-left: 20px; }
+.dn-l i { vertical-align: -2px; margin-right: 6px; }
+.dn { width: 130px; }
+.tabs button { flex: 1 0 78px; min-width: 78px; font-size: .68rem; padding: 8px 0 6px; white-space: nowrap; }
+.tabs button em { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }

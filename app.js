@@ -146,6 +146,34 @@
       '<div class="mv-m"><span>' + kg(nK) + ' kg</span>' + (g0.modo !== 'PCT' && g0.fase ? '<span>Fase: ' + esc(g0.fase) + '</span>' : '') + '<span>' + esc(g0.usuario) + ' · ' + fecha(g0.fecha) + '</span>' + (g0.obs ? '<span>' + esc(g0.obs) + '</span>' : '') + '</div>' + det + '</div>' +
       (conAcciones && !anG && g.every(function (x) { return !x.pendiente && esHoy(x.fecha); }) ? '<button class="btn chico sec" data-a="anularSalida" data-v="' + esc(activas.map(function (x) { return x.id; }).join(',')) + '">Anular</button>' : '') + '</div>';
   }
+  // ---- gráficos del panel (SVG/CSS, sin librerías) ----
+  function donut(l, a, o) {
+    var t = l + a + o || 1, R = 15.915, off = 25, seg = [[l, '#16a34a'], [a, '#f59e0b'], [o, '#2563eb']], acc = 0, h = '';
+    seg.forEach(function (x) { var p = 100 * x[0] / t; if (p > 0) h += '<circle cx="21" cy="21" r="' + R + '" fill="none" stroke="' + x[1] + '" stroke-width="7" stroke-dasharray="' + p.toFixed(2) + ' ' + (100 - p).toFixed(2) + '" stroke-dashoffset="' + (off - acc).toFixed(2) + '"/>'; acc += p; });
+    var av = Math.round(100 * (a + o) / t);
+    return '<svg class="dn" viewBox="0 0 42 42" role="img" aria-label="Distribución de piezas"><circle cx="21" cy="21" r="' + R + '" fill="none" stroke="#e2e8f0" stroke-width="7"/>' + h +
+      '<text x="21" y="20.5" text-anchor="middle" class="dn-n">' + av + '%</text><text x="21" y="26" text-anchor="middle" class="dn-s">usado</text></svg>';
+  }
+  function barraH(x) {
+    var t = x.in_p || 1, f = function (n) { return (100 * n / t).toFixed(1) + '%'; };
+    return '<div class="bh"><i class="lib" style="width:' + f(x.lib_p) + '"></i><i class="arm" style="width:' + f(x.arm_p) + '"></i><i class="out" style="width:' + f(x.out_p) + '"></i></div>';
+  }
+  function leyenda() { return '<div class="ley"><span><i class="lib"></i>Libre</span><span><i class="arm"></i>Armado</span><span><i class="out"></i>Salió</span></div>'; }
+  function tendencia7() {
+    var dias = [], d = new Date(), k, i, z = isoDe;
+    for (i = 6; i >= 0; i--) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate() - i); dias.push({ f: z(x), a: 0, o: 0, l: ['D', 'L', 'M', 'M', 'J', 'V', 'S'][x.getDay()] + ' ' + x.getDate() }); }
+    S.estado.salidas.forEach(function (x) { if (x.estado === 'ANULADA') return; var f = String(x.fecha || '').slice(0, 10); dias.forEach(function (y) { if (y.f === f) { if (tp(x) === 'ARMADO') y.a += +x.kg || 0; else y.o += +x.kg || 0; } }); });
+    var mx = Math.max.apply(null, dias.map(function (y) { return Math.max(y.a, y.o); }).concat([1])), W = 300, H = 120, bw = 13, gx = W / 7, g = '';
+    dias.forEach(function (y, n) {
+      var x0 = n * gx + gx / 2 - bw - 1, ha = 100 * y.a / mx, ho = 100 * y.o / mx;
+      g += '<rect x="' + x0.toFixed(1) + '" y="' + (105 - ha).toFixed(1) + '" width="' + bw + '" height="' + ha.toFixed(1) + '" rx="2" fill="#f59e0b"/>' +
+        '<rect x="' + (x0 + bw + 2).toFixed(1) + '" y="' + (105 - ho).toFixed(1) + '" width="' + bw + '" height="' + ho.toFixed(1) + '" rx="2" fill="#2563eb"/>' +
+        '<text x="' + (n * gx + gx / 2).toFixed(1) + '" y="118" text-anchor="middle" class="tx">' + y.l + '</text>';
+    });
+    var tA = dias.reduce(function (a, y) { return a + y.a; }, 0), tO = dias.reduce(function (a, y) { return a + y.o; }, 0);
+    return '<div class="card gr"><h3>Últimos 7 días (kg)</h3><svg viewBox="0 0 ' + W + ' ' + H + '" class="tr" role="img" aria-label="Armado y salida por día"><line x1="0" y1="105" x2="' + W + '" y2="105" stroke="#94a3b8"/>' + g + '</svg>' +
+      '<div class="ley"><span><i class="arm"></i>Armado ' + kg(tA) + ' kg</span><span><i class="out"></i>Salió ' + kg(tO) + ' kg</span></div></div>';
+  }
   function vPanel() {
     if (!S.estado.entradas.length) return sinInventario();
     var c = S.calc, t = c.tot, filtrado = S.per.k !== 'todo';
@@ -157,10 +185,19 @@
       '<div class="tl lib"><div class="tl-i">✅</div><b>' + n0(t.lib_p) + '</b><strong>Libre</strong><small>Sin usar</small><i>' + kg(t.lib_kg) + ' kg</i></div>' +
       '<div class="tl arm"><div class="tl-i">🔧</div><b>' + n0(t.arm_p) + '</b><strong>Armado</strong><small>Ya armado, sigue aquí</small><i>' + kg(t.arm_kg) + ' kg</i></div>' +
       '<div class="tl out"><div class="tl-i">🚚</div><b>' + n0(filtrado ? ps.p : t.out_p) + '</b><strong>Salió</strong><small>' + (filtrado ? 'En el período' : 'Ya se fue de la playa') + '</small><i>' + kg(filtrado ? ps.kg : t.out_kg) + ' kg</i></div></div>';
-    h += '<h2 class="sec-t">Por tipo de varilla</h2>' + diams.map(function (d) { return estCard(esc(C.diamLabel(d)), '', c.porDiam[d]); }).join('');
-    h += '<h2 class="sec-t">Por estructura</h2>' + Object.keys(c.porElem).sort().map(function (e) {
-      var x = c.porElem[e], ped = {}; S.estado.pedidos.forEach(function (p) { if (p.estructura === e) ped[p.pedido] = 1; });
-      return estCard(esc(e), 'Pedido ' + esc(Object.keys(ped).join(', ')), x); }).join('');
+    // distribución general
+    h += '<div class="card gr"><h3>¿Cómo está el acero?</h3><div class="dn-w">' + donut(t.lib_p, t.arm_p, t.out_p) +
+      '<div class="dn-l"><div><i class="lib"></i><b>' + n0(t.lib_p) + '</b> libres<small>' + kg(t.lib_kg) + ' kg</small></div><div><i class="arm"></i><b>' + n0(t.arm_p) + '</b> armadas<small>' + kg(t.arm_kg) + ' kg</small></div><div><i class="out"></i><b>' + n0(t.out_p) + '</b> salieron<small>' + kg(t.out_kg) + ' kg</small></div></div></div></div>';
+    h += tendencia7();
+    // avance por estructura (ranking)
+    var es = Object.keys(c.porElem).map(function (e) { var x = c.porElem[e]; return { e: e, x: x, av: x.in_p ? (x.arm_p + x.out_p) / x.in_p : 0 }; }).sort(function (a, b) { return b.av - a.av; });
+    h += '<div class="card gr"><h3>Avance por estructura</h3><p class="peq mut" style="margin:0 0 8px">Armado + salida sobre lo que llegó</p>' + leyenda() +
+      es.map(function (r) { return '<div class="bh-r"><div class="bh-t"><b>' + esc(r.e) + '</b><span>' + Math.round(100 * r.av) + '%</span></div>' + barraH(r.x) + '<small>' + n0(r.x.lib_p) + ' libres · ' + n0(r.x.arm_p) + ' armadas · ' + n0(r.x.out_p) + ' salieron</small></div>'; }).join('') + '</div>';
+    // kg por varilla
+    var mxk = Math.max.apply(null, diams.map(function (d) { return c.porDiam[d].in_kg || 0; }).concat([1]));
+    h += '<div class="card gr"><h3>Kilos por tipo de varilla</h3>' + leyenda() + diams.map(function (d) {
+      var x = c.porDiam[d], w = function (n) { return (100 * n / mxk).toFixed(1) + '%'; };
+      return '<div class="bh-r"><div class="bh-t"><b>' + esc(C.diamLabel(d)) + '</b><span>' + kg(x.in_kg) + ' kg</span></div><div class="bh"><i class="lib" style="width:' + w(x.lib_kg) + '"></i><i class="arm" style="width:' + w(x.arm_kg) + '"></i><i class="out" style="width:' + w(x.out_kg) + '"></i></div></div>'; }).join('') + '</div>';
     var L = movimientos().slice(0, 5);
     h += '<h2 class="sec-t">Últimos movimientos</h2><div class="card">' + (L.length ? L.map(function (m) { return vMov(m, false); }).join('') : '<div class="vacio">Sin movimientos</div>') + '</div>';
     return h;
@@ -256,7 +293,7 @@
   function ajustarSalida() {
     var s = S.sal, es = elemsDisp();
     if (todasElems().indexOf(s.elem) < 0) s.elem = '';
-    if (!s.elem && es.length === 1) { s.elem = es[0]; if (!s.fase) s.fase = fasesDe(s.elem)[0] || ''; }
+    if (!s.elem && es.length === 1) { s.elem = es[0]; }
   }
   function cantEn(e, d, m) { return enCarrito(e, d, m); }
   function piezasSalida(e) {
@@ -634,7 +671,7 @@
     s.err = ''; s.msg = '';
     Api.salidaLote(S.ses, { grupo: s.grupo, items: lista.map(function (it) { return { diametro: it.diam, cantidad: it.cant, elemento: it.elem, marca: it.marca }; }), obs: obs, fecha: fch, fase: s.modo === 'pos' ? String(s.fase).trim() : '', modo: s.modo === 'pct' ? 'PCT' : 'POS', pct: pctV, tipo: tipoReg }).then(function (r) {
       if (!r.ok) { s.err = r.error; render(); return; }
-      s.obs = ''; s.fecha = ''; s.grupo = ''; s.n = 0; s.items = []; s.q = ''; s.pct = '';
+      s.obs = ''; s.fecha = ''; s.grupo = ''; s.n = 0; s.items = []; s.q = ''; s.pct = ''; s.elem = ''; s.diam = ''; s.marca = ''; s.pos = ''; s.cant = 1; s.fase = ''; s.fdiam = '';
       s.balElem = llegaA100 ? elemSel : '';
       s.msg = (tipoReg === 'ARMADO' ? 'Armado guardado: ' : 'Salida guardada: ') + pz(totP) + ' (≈ ' + kg(totKg) + ' kg)' + (s.modo === 'pct' ? ' · ' + fmtPct(pctV) + ' % de avance' : '') + '.';
       window.scrollTo(0, 0);
@@ -709,7 +746,7 @@
     var f = t.getAttribute('data-f');
     if (f) {
       var p = f.split('.'); S[p[0]][p[1]] = t.value;
-      if (f === 'sal.elem') { S.sal.q = ''; S.sal.fdiam = ''; S.sal.items = []; S.sal.pct = ''; S.sal.balElem = ''; S.sal.fase = fasesDe(S.sal.elem)[0] || ''; }
+      if (f === 'sal.elem') { S.sal.q = ''; S.sal.fdiam = ''; S.sal.items = []; S.sal.pct = ''; S.sal.balElem = ''; S.sal.fase = ''; }
       S.sal.err = ''; S.sal.msg = '';
       render(); return;
     }
