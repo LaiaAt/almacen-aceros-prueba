@@ -477,12 +477,17 @@
       else if (f === dia) { hoyEnt.p += +e.cantidad || 0; hoyEnt.kg += +e.kg || 0; }
     });
     act.forEach(function (x) { if (tp(x) === 'SALIDA' && fd(x) < dia) { var o = ini[x.diametro] || (ini[x.diametro] = { p: 0, kg: 0 }); o.p -= +x.cantidad || 0; o.kg -= +x.kg || 0; } });
-    var run = {}, orig = {};
-    act.slice().sort(function (a, b) { return String(a.fecha) < String(b.fecha) ? -1 : String(a.fecha) > String(b.fecha) ? 1 : String(a.id) < String(b.id) ? -1 : 1; }).forEach(function (x) {
+    var run = {}, runH = {}, orig = {}, M = { aSale: { p: 0, kg: 0 }, aPrev: { p: 0, kg: 0 }, dir: { p: 0, kg: 0 } };
+    act.filter(function (x) { return fd(x) <= dia; }).sort(function (a, b) { return String(a.fecha) < String(b.fecha) ? -1 : String(a.fecha) > String(b.fecha) ? 1 : String(a.id) < String(b.id) ? -1 : 1; }).forEach(function (x) {
       var k = x.elemento + '|' + x.diametro + '|' + (x.marca || ''), c = +x.cantidad || 0;
-      if (tp(x) === 'ARMADO') { run[k] = (run[k] || 0) + c; return; }
-      var dA = Math.min(run[k] || 0, c); run[k] = (run[k] || 0) - dA;
-      if (fd(x) === dia) orig[x.id] = [dA, c - dA];
+      if (tp(x) === 'ARMADO') { run[k] = (run[k] || 0) + c; if (fd(x) === dia) runH[k] = (runH[k] || 0) + c; return; }
+      var viejo = Math.max(0, (run[k] || 0) - (runH[k] || 0)), dOld = Math.min(viejo, c), dHoy = Math.min(runH[k] || 0, c - dOld), dir = c - dOld - dHoy;
+      run[k] = (run[k] || 0) - dOld - dHoy; runH[k] = (runH[k] || 0) - dHoy;
+      if (fd(x) === dia) {
+        orig[x.id] = [dOld + dHoy, dir];
+        var kp = c ? (+x.kg || 0) / c : 0;
+        M.aSale.p += dHoy; M.aSale.kg += dHoy * kp; M.aPrev.p += dOld; M.aPrev.kg += dOld * kp; M.dir.p += dir; M.dir.kg += dir * kp;
+      }
     });
     function agrupar(L, modo) {
       var G = {}, ord = [];
@@ -501,8 +506,9 @@
     }
     var ks = Object.keys(ini).filter(function (k) { return ini[k].p > 0; }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
     var nEst = {}; arm.forEach(function (x) { nEst[x.elemento] = 1; });
+    var fin = C.calcular({ pedidos: S.estado.pedidos, entradas: S.estado.entradas.filter(function (e) { return fd(e) <= dia; }), salidas: S.estado.salidas.filter(function (x) { return fd(x) <= dia; }) });
     return {
-      dia: dia, ini: ini, ks: ks, hoyEnt: hoyEnt, armG: agrupar(arm, false), salG: agrupar(sal, true), nEst: Object.keys(nEst).length,
+      fin: fin, M: M, armP: arm.reduce(function (a, x) { return a + (+x.cantidad || 0); }, 0), dia: dia, ini: ini, ks: ks, hoyEnt: hoyEnt, armG: agrupar(arm, false), salG: agrupar(sal, true), nEst: Object.keys(nEst).length,
       kgArm: arm.reduce(function (a, x) { return a + (+x.kg || 0); }, 0), kgSal: sal.reduce(function (a, x) { return a + (+x.kg || 0); }, 0)
     };
   }
@@ -582,6 +588,46 @@
     }
     tabla('2 · PRODUCCIÓN DE ACERO DEL DÍA (ARMADO POR ESTRUCTURA)', D.armG, 'No se armó acero este día.');
     tabla('3 · SALIDA DE ACERO DEL DÍA (ARMADO QUE SALIÓ O SALIDA DIRECTA)', D.salG, 'No salió acero este día.');
+    // observaciones
+    var Mx = D.M, obs = [];
+    if (D.armP) obs.push('Se armaron ' + kg(D.kgArm) + ' kg (' + n0(D.armP) + ' piezas). De ellos, ' + kg(Mx.aSale.kg) + ' kg (' + n0(Mx.aSale.p) + ' piezas) salieron del almacén y ' + kg(Math.max(0, D.kgArm - Mx.aSale.kg)) + ' kg (' + n0(D.armP - Mx.aSale.p) + ' piezas) siguen en el almacén como acero armado.');
+    if (Mx.aPrev.p) obs.push('Además salieron ' + kg(Mx.aPrev.kg) + ' kg (' + n0(Mx.aPrev.p) + ' piezas) de acero armado en días anteriores.');
+    if (Mx.dir.p) obs.push('Salieron directo, sin armar: ' + kg(Mx.dir.kg) + ' kg (' + n0(Mx.dir.p) + ' piezas).');
+    obs.push(D.kgSal ? 'Total que salió del almacén en el día: ' + kg(D.kgSal) + ' kg.' : 'En el día no salió acero del almacén.');
+    var oL = []; obs.forEach(function (t) { P.partir(t, AN - 22, 8.5).forEach(function (ln, i) { oL.push({ t: ln, pt: i === 0 }); }); });
+    var oH = oL.length * 11 + 8;
+    if (y + 17 + oH > FIN) pagina();
+    banda('OBSERVACIONES DEL DÍA');
+    P.rect(M, y, AN, oH, null, [0, 0, 0]);
+    oL.forEach(function (l, i) { if (l.pt) P.texto(M + 6, y + 12 + i * 11, '•', 8.5, true); P.texto(M + 16, y + 12 + i * 11, l.t, 8.5); });
+    y += oH + 10;
+    // almacén actualizado al cierre
+    var F = D.fin;
+    function tabla4(titulo, primera, claves, mapa) {
+      var W4 = [165, 52, 70, 52, 70, 52, 62];
+      function cab4() { var x = M, T = [primera, 'Libre pzs', 'Libre kg', 'Armado pzs', 'Armado kg', 'Total pzs', 'Total kg']; T.forEach(function (t, i) { celda(x, W4[i], 16, [{ t: t, b: true, size: 7 }], { fill: CLARO, al: i ? 'c' : 'l', size: 7 }); x += W4[i]; }); y += 16; }
+      if (y + 17 + 16 + 20 > FIN) pagina();
+      banda(titulo); cab4();
+      var T0 = { lib_p: 0, lib_kg: 0, arm_p: 0, arm_kg: 0, sal_p: 0, sal_kg: 0 };
+      claves.forEach(function (k) {
+        var q = mapa[k], ln = P.partir(k === '__' ? '' : (primera === '#Varilla' ? C.diamLabel(k) : k), W4[0] - 6, 8, false), h = Math.max(16, ln.length * 10.5 + 6);
+        if (y + h > FIN) { pagina(); cab4(); }
+        var vals = [q.lib_p, q.lib_kg, q.arm_p, q.arm_kg, q.sal_p, q.sal_kg], x = M;
+        celda(x, W4[0], h, ln.map(function (t) { return { t: t, size: 8 }; }), { size: 8 }); x += W4[0];
+        vals.forEach(function (v, i) { celda(x, W4[i + 1], h, [{ t: i % 2 ? kg(v) : n0(v), size: 8, b: i >= 4 }], { al: 'r', size: 8 }); x += W4[i + 1]; });
+        y += h; Object.keys(T0).forEach(function (f) { T0[f] += q[f] || 0; });
+      });
+      if (y + 16 > FIN) { pagina(); cab4(); }
+      var x2 = M; celda(x2, W4[0], 16, [{ t: 'TOTAL', b: true }], { fill: CLARO }); x2 += W4[0];
+      [T0.lib_p, T0.lib_kg, T0.arm_p, T0.arm_kg, T0.sal_p, T0.sal_kg].forEach(function (v, i) { celda(x2, W4[i + 1], 16, [{ t: i % 2 ? kg(v) : n0(v), b: true, size: 8 }], { fill: CLARO, al: 'r' }); x2 += W4[i + 1]; });
+      y += 16 + 10;
+    }
+    var kd = Object.keys(F.porDiam).filter(function (k) { return F.porDiam[k].sal_p > 0; }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
+    var ke = Object.keys(F.porElem).filter(function (k) { return F.porElem[k].sal_p > 0; }).sort();
+    if (kd.length) {
+      tabla4('4 · ACERO EN EL ALMACÉN AL CIERRE DEL DÍA · POR VARILLA', '#Varilla', kd, F.porDiam);
+      tabla4('5 · ACERO EN EL ALMACÉN AL CIERRE DEL DÍA · POR ESTRUCTURA', 'Estructura', ke, F.porElem);
+    } else { banda('4 · ACERO EN EL ALMACÉN AL CIERRE DEL DÍA'); P.rect(M, y, AN, 18, null, [0, 0, 0]); P.texto(M + 6, y + 12, 'No queda acero en el almacén.', 8.5); y += 28; }
     if (y + 50 > FIN) pagina();
     y += 26; P.linea(M, y, M + 250, y); P.linea(M + 290, y, M + AN, y);
     P.texto(M, y + 11, 'Responsable: ' + resp, 8.5); P.texto(M + 290, y + 11, 'Firma', 8.5);

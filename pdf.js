@@ -11,7 +11,7 @@
     return t * size / 1000 * (bold ? 1.07 : 1);
   };
   function enc(s) {
-    s = String(s).replace(/[  ]/g, ' ').replace(/—/g, '\x97').replace(/–/g, '\x96');
+    s = String(s).replace(/[  ]/g, ' ').replace(/—/g, '\x97').replace(/–/g, '\x96').replace(/•/g, '\x95');
     var o = '';
     for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i), ch = s[i]; if (c > 255) ch = '?'; if (ch === '\\' || ch === '(' || ch === ')') ch = '\\' + ch; o += ch; }
     return o;
