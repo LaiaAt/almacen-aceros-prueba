@@ -462,16 +462,14 @@
       (!Api.remoto && esAdmin() ? '<div style="margin-top:14px"><button class="btn chico peligro" data-a="borrarLocal">Borrar datos de prueba de este navegador</button></div>' : '') + '</div>';
   }
 
-  // ---------- Informe diario (parte de armado por estructura) ----------
+  // ---------- Informe diario (PDF de armado por estructura) ----------
   function numVar(d) { var n = C.NUMERO[d]; return n || (d ? C.diamLabel(d) : ''); }
-  function vInforme() {
-    var I = S.inf, dia = I.d || hoyISO();
+  function datosInforme(dia) {
     var fd = function (x) { return String(x.fecha || '').slice(0, 10); };
     var act = S.estado.salidas.filter(function (x) { return x.estado !== 'ANULADA'; });
     var arm = act.filter(function (x) { return fd(x) === dia && tp(x) === 'ARMADO'; });
     var sal = act.filter(function (x) { return fd(x) === dia && tp(x) === 'SALIDA'; });
     var calc = S.calc || C.calcular(S.estado), tot = function (e) { return (calc.porElem[e] || {}).in_p || 0; };
-    // 1) acero en almacén al iniciar el día (llegó antes de hoy − salió antes de hoy)
     var ini = {}, hoyEnt = { p: 0, kg: 0 };
     S.estado.entradas.forEach(function (e) {
       var f = fd(e);
@@ -479,7 +477,6 @@
       else if (f === dia) { hoyEnt.p += +e.cantidad || 0; hoyEnt.kg += +e.kg || 0; }
     });
     act.forEach(function (x) { if (tp(x) === 'SALIDA' && fd(x) < dia) { var o = ini[x.diametro] || (ini[x.diametro] = { p: 0, kg: 0 }); o.p -= +x.cantidad || 0; o.kg -= +x.kg || 0; } });
-    // 2) de las salidas del día, cuánto salió ya armado y cuánto directo (se simula posición por posición)
     var run = {}, orig = {};
     act.slice().sort(function (a, b) { return String(a.fecha) < String(b.fecha) ? -1 : String(a.fecha) > String(b.fecha) ? 1 : String(a.id) < String(b.id) ? -1 : 1; }).forEach(function (x) {
       var k = x.elemento + '|' + x.diametro + '|' + (x.marca || ''), c = +x.cantidad || 0;
@@ -490,51 +487,113 @@
     function agrupar(L, modo) {
       var G = {}, ord = [];
       L.forEach(function (x) {
-        var c = +x.cantidad || 0, kgx = +x.kg || 0, partes = modo ? [['Armado', (orig[x.id] || [0, c])[0]], ['Directo', (orig[x.id] || [0, c])[1]]] : [['Armado', c]];
+        var c = +x.cantidad || 0, kgx = +x.kg || 0, o = orig[x.id] || [0, c], partes = modo ? [['Armado', o[0]], ['Directo', o[1]]] : [['Armado', c]];
         partes.forEach(function (pt) {
           if (!pt[1]) return;
           var k = x.elemento + '|' + x.diametro + '|' + pt[0];
-          if (!G[k]) { G[k] = { e: x.elemento, d: x.diametro, est: modo ? pt[0] : 'Armado', p: 0, kg: 0, fases: {}, us: {}, pos: {} }; ord.push(k); }
+          if (!G[k]) { G[k] = { e: x.elemento, d: x.diametro, est: pt[0], p: 0, kg: 0, fases: {}, us: {}, pos: {} }; ord.push(k); }
           var g = G[k]; g.p += pt[1]; g.kg += c ? kgx * pt[1] / c : 0;
-          if (x.fase) g.fases[x.fase] = 1; if (x.usuario) g.us[x.usuario] = 1; if (x.marca) g.pos[x.marca] = (g.pos[x.marca] || 0) + pt[1];
+          if (x.fase) g.fases[x.fase] = 1; if (x.usuario) g.us[x.usuario] = 1; if (x.marca) g.pos[x.marca] = 1;
         });
       });
       ord.sort(function (a, b) { var x = G[a], y = G[b]; return x.e < y.e ? -1 : x.e > y.e ? 1 : C.diamOrder(x.d) - C.diamOrder(y.d) || (x.est < y.est ? -1 : 1); });
-      return ord.map(function (k) { return G[k]; });
+      return ord.map(function (k) { var g = G[k]; g.pc = tot(g.e) ? 100 * g.p / tot(g.e) : 0; return g; });
     }
-    function filas(L, vacio, modo) {
-      var g = agrupar(L, modo);
-      if (!g.length) return '<tr><td colspan="7" class="inf-v">' + vacio + '</td></tr>';
-      return g.map(function (r) {
-        var pc = tot(r.e) ? (100 * r.p / tot(r.e)) : 0;
-        var pos = Object.keys(r.pos).sort(cmpMarca).join(', ');
-        return '<tr><td class="c"><b>' + r.est + '</b></td><td><b>' + esc(r.e) + '</b>' + (Object.keys(r.fases).length ? '<br><small>Fase: ' + esc(Object.keys(r.fases).join(', ')) + '</small>' : '') + (pos ? '<br><small>Pos.: ' + esc(pos) + '</small>' : '') + '</td>' +
-          '<td class="c"><b>' + esc(numVar(r.d)) + '</b></td><td class="c">' + n0(r.p) + '</td><td class="c">' + fmtPct(pc) + '%</td><td class="r">' + kg(r.kg) + '</td><td>' + esc(Object.keys(r.us).join(', ')) + '</td></tr>';
-      }).join('');
-    }
-    var cab = '<colgroup><col style="width:12%"><col style="width:34%"><col style="width:9%"><col style="width:8%"><col style="width:9%"><col style="width:13%"><col style="width:15%"></colgroup><thead><tr><th class="c">Estado</th><th>Estructura</th><th class="c">#Varilla</th><th class="c">Cant.</th><th class="c">% estr.</th><th class="r">Kg</th><th>Responsable</th></tr></thead>';
-    function totales(L, modo) { var g = agrupar(L, modo); return '<tr class="inf-tot"><td colspan="3">TOTAL</td><td class="c">' + n0(g.reduce(function (a, r) { return a + r.p; }, 0)) + '</td><td></td><td class="r">' + kg(g.reduce(function (a, r) { return a + r.kg; }, 0)) + '</td><td></td></tr>'; }
     var ks = Object.keys(ini).filter(function (k) { return ini[k].p > 0; }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
-    var tI = ks.reduce(function (a, k) { a.p += ini[k].p; a.kg += ini[k].kg; return a; }, { p: 0, kg: 0 });
-    var t1 = ks.length ? '<table class="inf-t"><thead><tr><th>#Varilla</th>' + ks.map(function (k) { return '<th class="c">' + esc(numVar(k)) + '</th>'; }).join('') + '<th class="c">Total</th></tr></thead><tbody>' +
-      '<tr><th>Piezas</th>' + ks.map(function (k) { return '<td class="c">' + n0(ini[k].p) + '</td>'; }).join('') + '<td class="c"><b>' + n0(tI.p) + '</b></td></tr>' +
-      '<tr><th>Kg</th>' + ks.map(function (k) { return '<td class="c">' + kg(ini[k].kg) + '</td>'; }).join('') + '<td class="c"><b>' + kg(tI.kg) + '</b></td></tr></tbody></table>'
-      : '<table class="inf-t"><tr><td class="inf-v">No había acero en el almacén al iniciar el día</td></tr></table>';
-    if (hoyEnt.p) t1 += '<p class="inf-nota">Además llegaron en el día: ' + n0(hoyEnt.p) + ' piezas (' + kg(hoyEnt.kg) + ' kg).</p>';
-    var kgArm = arm.reduce(function (a, x) { return a + (+x.kg || 0); }, 0), kgSal = sal.reduce(function (a, x) { return a + (+x.kg || 0); }, 0);
     var nEst = {}; arm.forEach(function (x) { nEst[x.elemento] = 1; });
-    var d = dia.split('-'), resp = S.ses ? S.ses.nombre : '';
-    var h = '<div class="card inf-ctl noimp"><h2 style="margin-top:0">Informe del día</h2><label class="f" style="margin:0">Fecha<input type="date" max="' + hoyISO() + '" value="' + esc(dia) + '" data-f="inf.d"></label>' +
-      '<button class="btn blk" style="margin-top:14px" data-a="imprimir">🖨️ Guardar PDF / Imprimir</button><p class="peq mut">En el celular: Imprimir → "Guardar como PDF".</p></div>';
-    h += '<div class="inf-hoja"><div class="inf-cab"><b>PARTE DIARIO DE PRODUCCIÓN · TALLER DE ACERO</b><span>' + esc(CFG.TITULO) + '</span></div>' +
-      '<table class="inf-t inf-meta"><tr><th>Fecha</th><td>' + d[2] + '/' + d[1] + '/' + d[0] + '</td><th>Estructuras armadas</th><td class="c">' + Object.keys(nEst).length + '</td><th>Armado</th><td class="c">' + kg(kgArm) + ' kg</td><th>Salió</th><td class="c">' + kg(kgSal) + ' kg</td></tr></table>' +
-      '<p class="inf-nota">Oficiales y ayudantes: ver el Parte diario del día (aplicación de parte diario).</p>' +
-      '<div class="inf-sec">1 · Acero en el almacén al iniciar el día</div>' + t1 +
-      '<div class="inf-sec">2 · Producción de acero del día (armado por estructura)</div><table class="inf-t inf-p">' + cab + '<tbody>' + filas(arm, 'No se armó acero este día', false) + (arm.length ? totales(arm, false) : '') + '</tbody></table>' +
-      '<div class="inf-sec">3 · Salida de acero del día (armado que salió o salida directa)</div><table class="inf-t inf-p">' + cab + '<tbody>' + filas(sal, 'No salió acero este día', true) + (sal.length ? totales(sal, true) : '') + '</tbody></table>' +
-      '<div class="inf-fir"><div><i></i>Responsable: ' + esc(resp) + '</div><div><i></i>Firma</div></div>' +
-      '<div class="inf-pie">Generado ' + new Date().toLocaleString('es-CO') + ' · Autor del sistema: Carlos Eduardo Bermúdez Castro</div></div>';
-    return h;
+    return {
+      dia: dia, ini: ini, ks: ks, hoyEnt: hoyEnt, armG: agrupar(arm, false), salG: agrupar(sal, true), nEst: Object.keys(nEst).length,
+      kgArm: arm.reduce(function (a, x) { return a + (+x.kg || 0); }, 0), kgSal: sal.reduce(function (a, x) { return a + (+x.kg || 0); }, 0)
+    };
+  }
+  function vInforme() {
+    var dia = S.inf.d || hoyISO(), D = datosInforme(dia);
+    return '<div class="card inf-ctl"><h2 style="margin-top:0">Informe del día</h2><label class="f" style="margin:0">Fecha<input type="date" max="' + hoyISO() + '" value="' + esc(dia) + '" data-f="inf.d"></label>' +
+      '<div class="inf-res"><div><b>' + D.nEst + '</b><small>estructuras armadas</small></div><div><b>' + kg(D.kgArm) + '</b><small>kg armados</small></div><div><b>' + kg(D.kgSal) + '</b><small>kg que salieron</small></div></div>' +
+      '<button class="btn blk" data-a="bajarInforme">⬇️ Descargar informe (PDF)</button>' +
+      '<p class="peq mut">Parte diario de armado por estructura del día elegido. Oficiales y ayudantes: ver el Parte diario.</p></div>';
+  }
+  function descargarInforme() {
+    var dia = S.inf.d || hoyISO(), D = datosInforme(dia), P = new MiniPdf('Parte diario de producción - Taller de acero ' + dia, 'Carlos Eduardo Bermúdez Castro');
+    var M = 36, AN = 523, FIN = 800, y = 0, VERDE = [0.043, 0.42, 0.227], CLARO = [0.91, 0.945, 0.925], BL = [1, 1, 1], d = dia.split('-');
+    var resp = S.ses ? S.ses.nombre : '';
+    function pagina() { P.nueva(); y = M; }
+    function banda(t) { P.rect(M, y, AN, 17, VERDE); P.texto(M + AN / 2 - P.ancho(t, 9, true) / 2, y + 12, t, 9, true, BL); y += 17; }
+    function celda(x, w, h, lineas, o) {
+      o = o || {}; P.rect(x, y, w, h, o.fill, [0, 0, 0]);
+      var yy = y + 3 + (o.size || 8.5), n = 0;
+      lineas.forEach(function (ln) {
+        var sz = ln.size || o.size || 8.5, tx = M, ax = P.ancho(ln.t, sz, ln.b);
+        tx = o.al === 'c' ? x + w / 2 - ax / 2 : o.al === 'r' ? x + w - 3 - ax : x + 3;
+        P.texto(tx, yy + n, ln.t, sz, ln.b, ln.c); n += sz + 2.2;
+      });
+    }
+    function alto(lineas, size) { return Math.max(16, lineas.reduce(function (a, l) { return a + (l.size || size || 8.5) + 2.2; }, 0) + 5); }
+    pagina();
+    P.rect(M, y, AN, 34, VERDE);
+    var t1 = 'PARTE DIARIO DE PRODUCCIÓN · TALLER DE ACERO'; P.texto(M + AN / 2 - P.ancho(t1, 12, true) / 2, y + 15, t1, 12, true, BL);
+    var t2 = CFG.TITULO || 'Almacén de aceros'; P.texto(M + AN / 2 - P.ancho(t2, 8) / 2, y + 28, t2, 8, false, BL); y += 34;
+    // fila de datos
+    var meta = [['FECHA', d[2] + '/' + d[1] + '/' + d[0]], ['ESTRUCTURAS ARMADAS', String(D.nEst)], ['ARMADO', kg(D.kgArm) + ' kg'], ['SALIÓ', kg(D.kgSal) + ' kg']], mw = [110, 150, 130, 133], mx = M;
+    meta.forEach(function (m, i) { P.rect(mx, y, mw[i], 22, CLARO, [0, 0, 0]); P.texto(mx + 4, y + 8, m[0], 6.5, true); P.texto(mx + 4, y + 18, m[1], 9.5, true); mx += mw[i]; });
+    y += 22;
+    P.texto(M, y + 11, 'Oficiales y ayudantes: ver el Parte diario del día (aplicación de parte diario).', 8, false, [0.25, 0.25, 0.25]); y += 18;
+    // 1) almacén al iniciar
+    banda('1 · ACERO EN EL ALMACÉN AL INICIAR EL DÍA');
+    if (D.ks.length) {
+      var cw = (AN - 70) / (D.ks.length + 1), fil = [['#Varilla', D.ks.map(numVar).concat(['Total'])],
+        ['Piezas', D.ks.map(function (k) { return n0(D.ini[k].p); }).concat([n0(D.ks.reduce(function (a, k) { return a + D.ini[k].p; }, 0))])],
+        ['Kg', D.ks.map(function (k) { return kg(D.ini[k].kg); }).concat([kg(D.ks.reduce(function (a, k) { return a + D.ini[k].kg; }, 0))])]];
+      fil.forEach(function (f, r) {
+        celda(M, 70, 16, [{ t: f[0], b: true }], { fill: CLARO });
+        f[1].forEach(function (v, c) { celda(M + 70 + c * cw, cw, 16, [{ t: v, b: r === 0 || c === f[1].length - 1 }], { al: 'c', fill: r === 0 ? CLARO : null }); });
+        y += 16;
+      });
+    } else { P.rect(M, y, AN, 18, null, [0, 0, 0]); P.texto(M + 6, y + 12, 'No había acero en el almacén al iniciar el día.', 8.5); y += 18; }
+    if (D.hoyEnt.p) { P.texto(M, y + 11, 'Además llegaron en el día: ' + n0(D.hoyEnt.p) + ' piezas (' + kg(D.hoyEnt.kg) + ' kg).', 8, false, [0.25, 0.25, 0.25]); y += 15; }
+    y += 8;
+    // 2) y 3) tablas con filas que se ajustan
+    var CW = [50, 208, 42, 36, 42, 65, 80], CT = ['Estado', 'Estructura', '#Varilla', 'Cant.', '% estr.', 'Kg', 'Responsable'];
+    function cabecera() { var x = M; CT.forEach(function (t, i) { celda(x, CW[i], 16, [{ t: t, b: true, size: 7.5 }], { fill: CLARO, al: i === 1 || i === 6 ? 'l' : 'c', size: 7.5 }); x += CW[i]; }); y += 16; }
+    function tabla(titulo, G, vacio) {
+      if (y + 17 + 16 + 24 > FIN) pagina();
+      banda(titulo); cabecera();
+      if (!G.length) { P.rect(M, y, AN, 18, null, [0, 0, 0]); P.texto(M + 6, y + 12, vacio, 8.5); y += 18; return; }
+      var tp_ = 0, tk = 0;
+      G.forEach(function (r) {
+        var L1 = P.partir(r.e, CW[1] - 6, 8.5, true).map(function (t) { return { t: t, b: true }; });
+        if (Object.keys(r.fases).length) P.partir('Fase: ' + Object.keys(r.fases).join(', '), CW[1] - 6, 7).forEach(function (t) { L1.push({ t: t, size: 7, c: [0.2, 0.2, 0.2] }); });
+        var pos = Object.keys(r.pos).sort(cmpMarca).join(', ');
+        if (pos) P.partir('Pos.: ' + pos, CW[1] - 6, 7).forEach(function (t) { L1.push({ t: t, size: 7, c: [0.2, 0.2, 0.2] }); });
+        var Lr = P.partir(Object.keys(r.us).join(', '), CW[6] - 6, 8.5).map(function (t) { return { t: t }; });
+        var h = Math.max(alto(L1), alto(Lr));
+        if (y + h > FIN) { pagina(); cabecera(); }
+        var x = M;
+        [[[{ t: r.est, b: true }], 'c'], [L1, 'l'], [[{ t: numVar(r.d), b: true }], 'c'], [[{ t: n0(r.p) }], 'c'], [[{ t: fmtPct(r.pc) + '%' }], 'c'], [[{ t: kg(r.kg) }], 'r'], [Lr, 'l']].forEach(function (c, i) { celda(x, CW[i], h, c[0], { al: c[1] }); x += CW[i]; });
+        y += h; tp_ += r.p; tk += r.kg;
+      });
+      if (y + 16 > FIN) { pagina(); cabecera(); }
+      celda(M, CW[0] + CW[1] + CW[2], 16, [{ t: 'TOTAL', b: true }], { fill: CLARO });
+      celda(M + CW[0] + CW[1] + CW[2], CW[3], 16, [{ t: n0(tp_), b: true }], { fill: CLARO, al: 'c' });
+      celda(M + CW[0] + CW[1] + CW[2] + CW[3], CW[4], 16, [], { fill: CLARO });
+      celda(M + AN - CW[5] - CW[6], CW[5], 16, [{ t: kg(tk), b: true }], { fill: CLARO, al: 'r' });
+      celda(M + AN - CW[6], CW[6], 16, [], { fill: CLARO });
+      y += 16 + 10;
+    }
+    tabla('2 · PRODUCCIÓN DE ACERO DEL DÍA (ARMADO POR ESTRUCTURA)', D.armG, 'No se armó acero este día.');
+    tabla('3 · SALIDA DE ACERO DEL DÍA (ARMADO QUE SALIÓ O SALIDA DIRECTA)', D.salG, 'No salió acero este día.');
+    if (y + 50 > FIN) pagina();
+    y += 26; P.linea(M, y, M + 250, y); P.linea(M + 290, y, M + AN, y);
+    P.texto(M, y + 11, 'Responsable: ' + resp, 8.5); P.texto(M + 290, y + 11, 'Firma', 8.5);
+    var gen = 'Generado ' + new Date().toLocaleString('es-CO') + ' · Autor del sistema: Carlos Eduardo Bermúdez Castro';
+    P.pages.forEach(function (pg, i) {
+      P.cur = pg; P.texto(M, 826, gen, 7, false, [0.35, 0.35, 0.35]);
+      var h = 'Hoja ' + (i + 1) + ' de ' + P.pages.length; P.texto(M + AN - P.ancho(h, 7.5), 826, h, 7.5, true);
+    });
+    var blob = new Blob([P.salida()], { type: 'application/pdf' }), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'Informe_armado_' + dia + '.pdf';
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+    toast('Informe descargado');
   }
 
   var PAG = 15;
@@ -734,7 +793,7 @@
       case 'registrarCarga': registrarCarga(+v); break;
       case 'quitarCarga': S.cargas.splice(+v, 1); render(); break;
       case 'csv': descargarCSV(); break;
-      case 'imprimir': window.print(); break;
+      case 'bajarInforme': descargarInforme(); break;
       case 'enviarCola': enviarCola(); break;
       case 'limpiarErrores': Api.limpiarErroresCola(); render(); break;
       case 'anularSalida':

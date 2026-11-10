@@ -386,3 +386,7 @@ i.lib { background: #16a34a; } i.arm { background: #f59e0b; } i.out { background
 .inf-hoja { overflow-x: auto; } .inf-hoja > * { min-width: 600px; }
 .inf-p th, .inf-p td { font-size: .78rem; } .inf-p thead th { font-size: .66rem; }
 @media print { .inf-hoja { overflow: visible; } .inf-hoja > * { min-width: 0; } }
+
+.inf-res { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+.inf-res div { background: #f1f5f9; border: 2px solid #94a3b8; border-radius: 12px; padding: 10px 6px; text-align: center; }
+.inf-res b { display: block; font-size: 1.15rem; color: var(--navy); } .inf-res small { color: #475569; font-size: .72rem; }
