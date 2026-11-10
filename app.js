@@ -492,7 +492,7 @@
     function agrupar(L, modo) {
       var G = {}, ord = [];
       L.forEach(function (x) {
-        var c = +x.cantidad || 0, kgx = +x.kg || 0, o = orig[x.id] || [0, c], partes = modo ? [['Armado', o[0]], ['Directo', o[1]]] : [['Armado', c]];
+        var c = +x.cantidad || 0, kgx = +x.kg || 0, o = orig[x.id] || [0, c], partes = modo ? [['Salió armado', o[0]], ['Salió directo', o[1]]] : [['Armado', c]];
         partes.forEach(function (pt) {
           if (!pt[1]) return;
           var k = x.elemento + '|' + x.diametro + '|' + pt[0];
@@ -507,9 +507,18 @@
     var ks = Object.keys(ini).filter(function (k) { return ini[k].p > 0; }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
     var nEst = {}; arm.forEach(function (x) { nEst[x.elemento] = 1; });
     var fin = C.calcular({ pedidos: S.estado.pedidos, entradas: S.estado.entradas.filter(function (e) { return fd(e) <= dia; }), salidas: S.estado.salidas.filter(function (x) { return fd(x) <= dia; }) });
+    var pu = {}; S.estado.pedidos.forEach(function (p) { pu[p.loadId] = p; });
+    var EG = {}, eord = [];
+    S.estado.entradas.forEach(function (e) {
+      if (fd(e) !== dia) return;
+      var k = e.estructura + '|' + e.diametro;
+      if (!EG[k]) { EG[k] = { e: e.estructura, d: e.diametro, est: 'Ingreso', p: 0, kg: 0, fases: {}, us: {}, pos: {}, ped: {}, nopc: true }; eord.push(k); }
+      var g = EG[k]; g.p += +e.cantidad || 0; g.kg += +e.kg || 0; g.ped[e.pedido] = 1; var pp = pu[e.loadId]; if (pp && pp.usuario) g.us[pp.usuario] = 1;
+    });
+    eord.sort(function (a, b) { var x = EG[a], y = EG[b]; return x.e < y.e ? -1 : x.e > y.e ? 1 : C.diamOrder(x.d) - C.diamOrder(y.d); });
     var ini0 = C.calcular({ pedidos: S.estado.pedidos, entradas: S.estado.entradas.filter(function (e) { return fd(e) < dia; }), salidas: S.estado.salidas.filter(function (x) { return fd(x) < dia; }) });
     return {
-      ini0: ini0, fin: fin, M: M, armP: arm.reduce(function (a, x) { return a + (+x.cantidad || 0); }, 0), dia: dia, ini: ini, ks: ks, hoyEnt: hoyEnt, armG: agrupar(arm, false), salG: agrupar(sal, true), nEst: Object.keys(nEst).length,
+      entG: eord.map(function (k) { return EG[k]; }), ini0: ini0, fin: fin, M: M, armP: arm.reduce(function (a, x) { return a + (+x.cantidad || 0); }, 0), dia: dia, ini: ini, ks: ks, hoyEnt: hoyEnt, armG: agrupar(arm, false), salG: agrupar(sal, true), nEst: Object.keys(nEst).length,
       kgArm: arm.reduce(function (a, x) { return a + (+x.kg || 0); }, 0), kgSal: sal.reduce(function (a, x) { return a + (+x.kg || 0); }, 0)
     };
   }
@@ -568,40 +577,47 @@
     var F0 = D.ini0, k0 = Object.keys(F0.porDiam).filter(function (k) { return F0.porDiam[k].sal_p > 0; }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
     if (k0.length) tabla4('1 · ACERO EN EL ALMACÉN AL INICIAR EL DÍA · POR VARILLA', '#Varilla', k0, F0.porDiam);
     else { banda('1 · ACERO EN EL ALMACÉN AL INICIAR EL DÍA'); P.rect(M, y, AN, 18, null, [0, 0, 0]); P.texto(M + 6, y + 12, 'No había acero en el almacén al iniciar el día.', 8.5); y += 28; }
-    if (D.hoyEnt.p) { P.texto(M, y + 11, 'Además llegaron en el día: ' + n0(D.hoyEnt.p) + ' piezas (' + kg(D.hoyEnt.kg) + ' kg).', 8, false, [0.25, 0.25, 0.25]); y += 15; }
     y += 8;
     // 2) y 3) tablas con filas que se ajustan
     var CW = [50, 208, 42, 36, 42, 65, 80], CT = ['Estado', 'Estructura', '#Varilla', 'Cant.', '% estr.', 'Kg', 'Responsable'];
     function cabecera() { var x = M; CT.forEach(function (t, i) { celda(x, CW[i], 16, [{ t: t, b: true, size: 7.5 }], { fill: CLARO, al: i === 1 || i === 6 ? 'l' : 'c', size: 7.5 }); x += CW[i]; }); y += 16; }
-    function tabla(titulo, G, vacio) {
+    function tabla(titulo, bloques, vacio) {
       if (y + 17 + 16 + 24 > FIN) pagina();
       banda(titulo); cabecera();
-      if (!G.length) { P.rect(M, y, AN, 18, null, [0, 0, 0]); P.texto(M + 6, y + 12, vacio, 8.5); y += 28; return; }
-      var tp_ = 0, tk = 0;
-      G.forEach(function (r) {
-        var L1 = P.partir(r.e, CW[1] - 6, 8.5, true).map(function (t) { return { t: t, b: true }; });
-        if (Object.keys(r.fases).length) P.partir('Fase: ' + Object.keys(r.fases).join(', '), CW[1] - 6, 7).forEach(function (t) { L1.push({ t: t, size: 7, c: [0.2, 0.2, 0.2] }); });
-        var pos = Object.keys(r.pos).sort(cmpMarca).join(', ');
-        if (pos) P.partir('Pos.: ' + pos, CW[1] - 6, 7).forEach(function (t) { L1.push({ t: t, size: 7, c: [0.2, 0.2, 0.2] }); });
-        var Lr = P.partir(Object.keys(r.us).join(', '), CW[6] - 6, 8.5).map(function (t) { return { t: t }; });
-        var h = Math.max(alto(L1), alto(Lr));
-        if (y + h > FIN) { pagina(); cabecera(); }
-        var x = M;
-        [[[{ t: r.est, b: true }], 'c'], [L1, 'l'], [[{ t: numVar(r.d), b: true }], 'c'], [[{ t: n0(r.p) }], 'c'], [[{ t: fmtPct(r.pc) + '%' }], 'c'], [[{ t: kg(r.kg) }], 'r'], [Lr, 'l']].forEach(function (c, i) { celda(x, CW[i], h, c[0], { al: c[1] }); x += CW[i]; });
-        y += h; tp_ += r.p; tk += r.kg;
+      if (!bloques.some(function (bl) { return bl.G.length; })) { P.rect(M, y, AN, 18, null, [0, 0, 0]); P.texto(M + 6, y + 12, vacio, 8.5); y += 28; return; }
+      bloques.forEach(function (bl) {
+        if (!bl.G.length) return;
+        var tp_ = 0, tk = 0;
+        bl.G.forEach(function (r) {
+          var L1 = P.partir(r.e, CW[1] - 6, 8.5, true).map(function (t) { return { t: t, b: true }; });
+          if (r.ped) P.partir('Pedido: ' + Object.keys(r.ped).join(', '), CW[1] - 6, 7).forEach(function (t) { L1.push({ t: t, size: 7, c: [0.2, 0.2, 0.2] }); });
+          if (Object.keys(r.fases).length) P.partir('Fase: ' + Object.keys(r.fases).join(', '), CW[1] - 6, 7).forEach(function (t) { L1.push({ t: t, size: 7, c: [0.2, 0.2, 0.2] }); });
+          var pos = Object.keys(r.pos).sort(cmpMarca).join(', ');
+          if (pos) P.partir('Pos.: ' + pos, CW[1] - 6, 7).forEach(function (t) { L1.push({ t: t, size: 7, c: [0.2, 0.2, 0.2] }); });
+          var Lr = P.partir(Object.keys(r.us).join(', '), CW[6] - 6, 8.5).map(function (t) { return { t: t }; });
+          var Le = P.partir(r.est, CW[0] - 4, 8, true).map(function (t) { return { t: t, b: true, size: 8 }; });
+          var h = Math.max(alto(L1), alto(Lr), alto(Le, 8));
+          if (y + h > FIN) { pagina(); cabecera(); }
+          var x = M;
+          [[Le, 'c'], [L1, 'l'], [[{ t: numVar(r.d), b: true }], 'c'], [[{ t: n0(r.p) }], 'c'], [[{ t: r.nopc ? '' : fmtPct(r.pc) + '%' }], 'c'], [[{ t: kg(r.kg) }], 'r'], [Lr, 'l']].forEach(function (c, i) { celda(x, CW[i], h, c[0], { al: c[1] }); x += CW[i]; });
+          y += h; tp_ += r.p; tk += r.kg;
+        });
+        if (y + 16 > FIN) { pagina(); cabecera(); }
+        celda(M, CW[0] + CW[1] + CW[2], 16, [{ t: bl.total || 'TOTAL', b: true }], { fill: CLARO });
+        celda(M + CW[0] + CW[1] + CW[2], CW[3], 16, [{ t: n0(tp_), b: true }], { fill: CLARO, al: 'c' });
+        celda(M + CW[0] + CW[1] + CW[2] + CW[3], CW[4], 16, [], { fill: CLARO });
+        celda(M + AN - CW[5] - CW[6], CW[5], 16, [{ t: kg(tk), b: true }], { fill: CLARO, al: 'r' });
+        celda(M + AN - CW[6], CW[6], 16, [], { fill: CLARO });
+        y += 16;
       });
-      if (y + 16 > FIN) { pagina(); cabecera(); }
-      celda(M, CW[0] + CW[1] + CW[2], 16, [{ t: 'TOTAL', b: true }], { fill: CLARO });
-      celda(M + CW[0] + CW[1] + CW[2], CW[3], 16, [{ t: n0(tp_), b: true }], { fill: CLARO, al: 'c' });
-      celda(M + CW[0] + CW[1] + CW[2] + CW[3], CW[4], 16, [], { fill: CLARO });
-      celda(M + AN - CW[5] - CW[6], CW[5], 16, [{ t: kg(tk), b: true }], { fill: CLARO, al: 'r' });
-      celda(M + AN - CW[6], CW[6], 16, [], { fill: CLARO });
-      y += 16 + 10;
+      y += 10;
     }
-    tabla('2 · PRODUCCIÓN DE ACERO DEL DÍA (ARMADO POR ESTRUCTURA)', D.armG, 'No se armó acero este día.');
-    tabla('3 · SALIDA DE ACERO DEL DÍA (ARMADO QUE SALIÓ O SALIDA DIRECTA)', D.salG, 'No salió acero este día.');
+    tabla('2 · PRODUCCIÓN DE ACERO DEL DÍA (ARMADO POR ESTRUCTURA)', [{ G: D.armG, total: 'TOTAL ARMADO' }], 'No se armó acero este día.');
+    tabla('3 · INGRESOS Y SALIDAS DE ACERO DEL DÍA', [{ G: D.entG, total: 'TOTAL INGRESOS' }, { G: D.salG, total: 'TOTAL SALIDAS' }], 'No hubo ingresos ni salidas de acero este día.');
     // observaciones
     var Mx = D.M, obs = [];
+    var sP = D.salG.reduce(function (a, r) { return a + r.p; }, 0), sK = D.salG.reduce(function (a, r) { return a + r.kg; }, 0), T0 = D.ini0.tot, T1 = D.fin.tot;
+    obs.push('Balance del almacén: iniciaron ' + n0(T0.sal_p) + ' piezas (' + kg(T0.sal_kg) + ' kg) + ingresaron ' + n0(D.hoyEnt.p) + ' (' + kg(D.hoyEnt.kg) + ' kg) - salieron ' + n0(sP) + ' (' + kg(sK) + ' kg) = cierran ' + n0(T1.sal_p) + ' piezas (' + kg(T1.sal_kg) + ' kg).');
     if (D.armP) obs.push('Se armaron ' + kg(D.kgArm) + ' kg (' + n0(D.armP) + ' piezas). De ellos, ' + kg(Mx.aSale.kg) + ' kg (' + n0(Mx.aSale.p) + ' piezas) salieron del almacén y ' + kg(Math.max(0, D.kgArm - Mx.aSale.kg)) + ' kg (' + n0(D.armP - Mx.aSale.p) + ' piezas) siguen en el almacén como acero armado.');
     if (Mx.aPrev.p) obs.push('Además salieron ' + kg(Mx.aPrev.kg) + ' kg (' + n0(Mx.aPrev.p) + ' piezas) de acero armado en días anteriores.');
     if (Mx.dir.p) obs.push('Salieron directo, sin armar: ' + kg(Mx.dir.kg) + ' kg (' + n0(Mx.dir.p) + ' piezas).');
