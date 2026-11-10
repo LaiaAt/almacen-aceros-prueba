@@ -512,7 +512,7 @@
           '<td class="c"><b>' + esc(numVar(r.d)) + '</b></td><td class="c">' + n0(r.p) + '</td><td class="c">' + fmtPct(pc) + '%</td><td class="r">' + kg(r.kg) + '</td><td>' + esc(Object.keys(r.us).join(', ')) + '</td></tr>';
       }).join('');
     }
-    var cab = '<thead><tr><th class="c">Estado</th><th>Estructura</th><th class="c">#Varilla</th><th class="c">Cant.</th><th class="c">% estr.</th><th class="r">Kg</th><th>Responsable</th></tr></thead>';
+    var cab = '<colgroup><col style="width:12%"><col style="width:34%"><col style="width:9%"><col style="width:8%"><col style="width:9%"><col style="width:13%"><col style="width:15%"></colgroup><thead><tr><th class="c">Estado</th><th>Estructura</th><th class="c">#Varilla</th><th class="c">Cant.</th><th class="c">% estr.</th><th class="r">Kg</th><th>Responsable</th></tr></thead>';
     function totales(L, modo) { var g = agrupar(L, modo); return '<tr class="inf-tot"><td colspan="3">TOTAL</td><td class="c">' + n0(g.reduce(function (a, r) { return a + r.p; }, 0)) + '</td><td></td><td class="r">' + kg(g.reduce(function (a, r) { return a + r.kg; }, 0)) + '</td><td></td></tr>'; }
     var ks = Object.keys(ini).filter(function (k) { return ini[k].p > 0; }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
     var tI = ks.reduce(function (a, k) { a.p += ini[k].p; a.kg += ini[k].kg; return a; }, { p: 0, kg: 0 });
@@ -530,8 +530,8 @@
       '<table class="inf-t inf-meta"><tr><th>Fecha</th><td>' + d[2] + '/' + d[1] + '/' + d[0] + '</td><th>Estructuras armadas</th><td class="c">' + Object.keys(nEst).length + '</td><th>Armado</th><td class="c">' + kg(kgArm) + ' kg</td><th>Salió</th><td class="c">' + kg(kgSal) + ' kg</td></tr></table>' +
       '<p class="inf-nota">Oficiales y ayudantes: ver el Parte diario del día (aplicación de parte diario).</p>' +
       '<div class="inf-sec">1 · Acero en el almacén al iniciar el día</div>' + t1 +
-      '<div class="inf-sec">2 · Producción de acero del día (armado por estructura)</div><table class="inf-t">' + cab + '<tbody>' + filas(arm, 'No se armó acero este día', false) + (arm.length ? totales(arm, false) : '') + '</tbody></table>' +
-      '<div class="inf-sec">3 · Salida de acero del día (armado que salió o salida directa)</div><table class="inf-t">' + cab + '<tbody>' + filas(sal, 'No salió acero este día', true) + (sal.length ? totales(sal, true) : '') + '</tbody></table>' +
+      '<div class="inf-sec">2 · Producción de acero del día (armado por estructura)</div><table class="inf-t inf-p">' + cab + '<tbody>' + filas(arm, 'No se armó acero este día', false) + (arm.length ? totales(arm, false) : '') + '</tbody></table>' +
+      '<div class="inf-sec">3 · Salida de acero del día (armado que salió o salida directa)</div><table class="inf-t inf-p">' + cab + '<tbody>' + filas(sal, 'No salió acero este día', true) + (sal.length ? totales(sal, true) : '') + '</tbody></table>' +
       '<div class="inf-fir"><div><i></i>Responsable: ' + esc(resp) + '</div><div><i></i>Firma</div></div>' +
       '<div class="inf-pie">Generado ' + new Date().toLocaleString('es-CO') + ' · Autor del sistema: Carlos Eduardo Bermúdez Castro</div></div>';
     return h;
