@@ -241,19 +241,26 @@ function registrarSalida_(req) {
 }
 
 function anularSalida_(req) {
+  // Acepta una o varias salidas (req.ids) y las anula en UNA sola pasada (rápido aunque sean cientos).
+  var ids = Array.isArray(req.ids) ? req.ids : [req.id];
+  if (ids.length > 600) return { ok: false, error: 'Demasiadas líneas a la vez' };
+  var quiero = {}; ids.forEach(function (x) { quiero[String(x)] = true; });
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Salidas');
   var n = sh.getLastRow();
   if (n < 2) return { ok: false, error: 'No hay salidas' };
-  var ids = sh.getRange(2, 1, n - 1, 1).getValues();
+  var base = sh.getRange(2, 1, n - 1, 2).getValues();
   var col = HOJAS.Salidas.indexOf('estado') + 1;
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]) === String(req.id)) {
-      var fch = String(sh.getRange(i + 2, 2).getValue()).slice(0, 10);
-      if (fch !== ahora_().slice(0, 10)) return { ok: false, error: 'Solo se puede anular una salida el mismo día en que se registró' };
-      sh.getRange(i + 2, col).setValue('ANULADA'); return { ok: true };
-    }
+  var est = sh.getRange(2, col, n - 1, 1).getValues();
+  var hoy = ahora_().slice(0, 10), hechas = 0, otroDia = 0;
+  for (var i = 0; i < base.length; i++) {
+    if (!quiero[String(base[i][0])]) continue;
+    if (String(base[i][1]).slice(0, 10) !== hoy) { otroDia++; continue; }
+    if (est[i][0] !== 'ANULADA') { est[i][0] = 'ANULADA'; hechas++; }
   }
-  return { ok: false, error: 'No se encontró la salida' };
+  if (!hechas && otroDia) return { ok: false, error: 'Solo se puede anular una salida el mismo día en que se registró' };
+  if (!hechas) return { ok: false, error: 'No se encontró la salida' };
+  sh.getRange(2, col, n - 1, 1).setValues(est);
+  return { ok: true, anuladas: hechas };
 }
 
 function anularCarga_(req) {

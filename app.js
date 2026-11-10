@@ -624,10 +624,13 @@
       case 'enviarCola': enviarCola(); break;
       case 'limpiarErrores': Api.limpiarErroresCola(); render(); break;
       case 'anularSalida':
-        if (confirm('¿Anular esta salida? El acero vuelve al inventario.')) {
-          var ids = String(v).split(','), okT = true, errT = '';
-          ids.reduce(function (pr, id) { return pr.then(function () { return Api.anularSalida(S.ses, id).then(function (r) { if (!r.ok) { okT = false; errT = r.error; } }); }); }, Promise.resolve())
-            .then(function () { toast(okT ? 'Salida anulada' : errT); return cargarEstado(); });
+        if (confirm('¿Anular esto? El acero vuelve a como estaba antes.')) {
+          toast('Anulando…');
+          Api.anularSalida(S.ses, String(v).split(',')).then(function (r) {
+            toast(r.ok ? 'Anulado' : r.error);
+            if (r.ok) { S.tab = MODO === 'salidas' ? 'inv' : 'panel'; window.scrollTo(0, 0); }
+            return cargarEstado();
+          });
         }
         break;
       case 'anularCarga':

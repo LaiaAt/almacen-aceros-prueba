@@ -131,13 +131,14 @@
       return Promise.resolve({ ok: true, pendiente: true });
     },
 
-    anularSalida: function (ses, id) {
+    anularSalida: function (ses, ids) {
+      ids = Array.isArray(ids) ? ids : [ids];
       if (!remoto) {
         var s = leer(K.local, vacio());
-        s.salidas.forEach(function (x) { if (x.id === id) x.estado = 'ANULADA'; });
+        s.salidas.forEach(function (x) { if (ids.indexOf(x.id) >= 0) x.estado = 'ANULADA'; });
         guardar(K.local, s); return Promise.resolve({ ok: true });
       }
-      return post({ action: 'anularSalida', pin: ses.pin, id: id }).catch(function () { return { ok: false, error: 'Sin conexión' }; });
+      return post({ action: 'anularSalida', pin: ses.pin, ids: ids }).catch(function () { return { ok: false, error: 'Sin conexión' }; });
     },
 
     anularCarga: function (ses, loadId) {
