@@ -1,6 +1,6 @@
 {
-  "name": "Almacén de aceros (prueba)",
-  "short_name": "Aceros",
+  "name": "Almacén de aceros · Panel",
+  "short_name": "Panel",
   "description": "Inventario de acero de refuerzo: entradas desde DLI y salidas por supervisor.",
   "lang": "es",
   "start_url": "./index.html",

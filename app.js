@@ -2,10 +2,11 @@
 (function () {
   'use strict';
   var C = window.AcerosCore, Api = window.Api, CFG = window.ACEROS_CONFIG;
+  var MODO = window.ACEROS_MODO === 'salidas' ? 'salidas' : 'dashboard', BASE = window.ACEROS_BASE || '';
 
   var S = {
-    ses: null, estado: { pedidos: [], entradas: [], salidas: [] }, calc: null, tab: 'panel', offline: false, enviando: false,
-    sal: { q: '', fdiam: '', items: [], grupo: '', n: 0, diam: '', elem: '', marca: '', pos: '', cant: 1, obs: '', fecha: '', msg: '', err: '' },
+    ses: null, estado: { pedidos: [], entradas: [], salidas: [] }, calc: null, tab: MODO === 'salidas' ? 'salida' : 'panel', offline: false, enviando: false, per: { k: 'todo', d: '', h: '' },
+    sal: { q: '', fdiam: '', items: [], grupo: '', n: 0, diam: '', elem: '', marca: '', pos: '', cant: 1, obs: '', fecha: '', msg: '', err: '', modo: 'pos', fase: '', pct: '', balElem: '' },
     inv: { vista: 'diametro', elem: '', diam: '' },
     cargas: [], loginErr: '', loginNom: ''
   };
@@ -18,6 +19,21 @@
   function hoyISO() {
     var d = new Date(), z = function (n) { return String(n).padStart(2, '0'); };
     return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+  }
+  function isoDe(d) { var z = function (n) { return String(n).padStart(2, '0'); }; return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); }
+  function rangoPer() {
+    var p = S.per, h = hoyISO(), d = new Date();
+    if (p.k === 'hoy') return [h, h];
+    if (p.k === '7d') { d.setDate(d.getDate() - 6); return [isoDe(d), h]; }
+    if (p.k === 'mes') return [h.slice(0, 8) + '01', h];
+    if (p.k === 'rango') return [p.d || '0000-01-01', p.h || '9999-12-31'];
+    return null;
+  }
+  function enPer(f) { var r = rangoPer(); if (!r) return true; var d = String(f || '').slice(0, 10); return d >= r[0] && d <= r[1]; }
+  function vFiltro() {
+    var P = [['hoy', 'Hoy'], ['7d', '7 días'], ['mes', 'Este mes'], ['todo', 'Todo'], ['rango', 'Rango']];
+    return '<div class="fper"><div class="fch">' + P.map(function (x) { return '<button type="button" class="fc' + (S.per.k === x[0] ? ' on' : '') + '" data-a="per" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      (S.per.k === 'rango' ? '<div class="frng"><label>Desde<input type="date" max="' + hoyISO() + '" value="' + esc(S.per.d) + '" data-f="per.d"></label><label>Hasta<input type="date" max="' + hoyISO() + '" value="' + esc(S.per.h) + '" data-f="per.h"></label></div>' : '') + '</div>';
   }
   function esHoy(f) { return String(f || '').slice(0, 10) === hoyISO(); }
   function horaAhora() { var d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
@@ -38,7 +54,7 @@
 
   // ---------- Vistas ----------
   function vLogin() {
-    return '<div class="login"><div class="marca"><img src="icons/icon-192.png" alt=""><h1>' + esc(CFG.TITULO) + '</h1>' +
+    return '<div class="login"><div class="marca"><img src="' + BASE + 'icons/icon-192.png" alt=""><h1>' + esc(CFG.TITULO) + '</h1>' +
       (Api.remoto ? '' : '<span class="insignia">Modo local de prueba</span>') + '</div>' +
       '<form id="f-login" class="card"><label class="f" for="l-nom">Su nombre</label>' +
       '<input id="l-nom" type="text" autocomplete="name" placeholder="Ej. Juan Pérez" value="' + esc(S.loginNom || (Api.sesion() || {}).nombre || '') + '">' +
@@ -49,7 +65,7 @@
   }
 
   function vTop() {
-    return '<header class="top"><img class="logo" src="icons/icon-192.png" alt=""><div class="tit"><b>' + esc(CFG.TITULO) + '</b><span>' +
+    return '<header class="top"><img class="logo" src="' + BASE + 'icons/icon-192.png" alt=""><div class="tit"><b>' + esc(CFG.TITULO) + '</b><span>' +
       esc(S.ses.nombre) + ' · ' + (esAdmin() ? 'Administrador' : 'Supervisor') + (Api.remoto ? '' : ' · modo local') + '</span></div>' +
       '<button class="ibtn" data-a="refrescar" title="Actualizar">⟳</button><button class="ibtn" data-a="salir" title="Salir">⏻</button></header>';
   }
@@ -65,8 +81,8 @@
   }
 
   function vTabs() {
-    var T = [['panel', '📊', 'Panel'], ['salida', '📤', 'Salida'], ['inv', '📦', 'Inventario'], ['mov', '🧾', 'Movimientos']];
-    if (esAdmin()) T.push(['cargar', '📥', 'Cargar DLI']);
+    if (MODO === 'salidas') return '';
+    var T = [['panel', '📊', 'Panel'], ['inv', '📦', 'Inventario'], ['mov', '🧾', 'Movimientos'], ['cargar', '📥', 'Cargar DLI']];
     return '<nav class="tabs">' + T.map(function (t) {
       return '<button class="' + (S.tab === t[0] ? 'on' : '') + '" data-a="tab" data-v="' + t[0] + '"><span>' + t[1] + '</span>' + t[2] + '</button>';
     }).join('') + '</nav>';
@@ -88,6 +104,7 @@
       G[k].push(s);
     });
     orden.forEach(function (k) { L.push({ t: 'S', f: G[k][0].fecha, s: G[k][0], g: G[k] }); });
+    L = L.filter(function (m) { return enPer(m.f); });
     L.sort(function (a, b) { return a.f < b.f ? 1 : a.f > b.f ? -1 : 0; });
     return L;
   }
@@ -103,12 +120,12 @@
       var totkg = activas.reduce(function (a, x) { return a + x.kg; }, 0);
       return '<div class="mov' + (anG ? ' anul' : '') + '"><div class="ic ' + (anG ? 'a' : 's') + '">−</div><div class="cu"><b>Salida · ' + m.g.length + ' líneas' + (anG ? '<span class="tag">anulada</span>' : '') + '</b>' +
         m.g.map(function (x) { return '<span>' + n0(x.cantidad) + ' × ' + esc(C.diamLabel(x.diametro)) + (x.marca ? ' · pos. ' + esc(x.marca) : '') + ' · ' + esc(x.elemento) + ' · ' + kg(x.kg) + ' kg' + (x.estado === 'ANULADA' && !anG ? ' (anulada)' : '') + '</span>'; }).join('') +
-        '<span><b>' + kg(totkg) + ' kg</b> · ' + esc(g0.usuario) + ' · ' + fecha(g0.fecha) + (g0.obs ? ' · ' + esc(g0.obs) : '') + '</span></div>' +
+        '<span><b>' + kg(totkg) + ' kg</b> · ' + esc(g0.usuario) + ' · ' + fecha(g0.fecha) + (g0.modo === 'PCT' ? ' · avance ' + fmtPct(g0.pct) + ' %' : g0.fase ? ' · fase ' + esc(g0.fase) : '') + (g0.obs ? ' · ' + esc(g0.obs) : '') + '</span></div>' +
         (conAcciones && esAdmin() && !anG && m.g.every(function (x) { return !x.pendiente && esHoy(x.fecha); }) ? '<button class="btn chico sec" data-a="anularSalida" data-v="' + esc(activas.map(function (x) { return x.id; }).join(',')) + '">Anular todo</button>' : '') + '</div>';
     }
     var s = m.s, an = s.estado === 'ANULADA';
     return '<div class="mov' + (an ? ' anul' : '') + '"><div class="ic ' + (an ? 'a' : 's') + '">−</div><div class="cu"><b>' + n0(s.cantidad) + ' × ' + esc(C.diamLabel(s.diametro)) + ' · ' + esc(s.elemento) +
-      (s.pendiente ? '<span class="tag pend">sin enviar</span>' : '') + (an ? '<span class="tag">anulada</span>' : '') + '</b><span>' + kg(s.kg) + ' kg' + (s.marca ? ' · pos. ' + esc(s.marca) : '') + ' · ' + esc(s.usuario) + ' · ' + fecha(s.fecha) + (s.obs ? ' · ' + esc(s.obs) : '') + '</span></div>' +
+      (s.pendiente ? '<span class="tag pend">sin enviar</span>' : '') + (an ? '<span class="tag">anulada</span>' : '') + '</b><span>' + kg(s.kg) + ' kg' + (s.marca ? ' · pos. ' + esc(s.marca) : '') + ' · ' + esc(s.usuario) + ' · ' + fecha(s.fecha) + (s.modo === 'PCT' ? ' · avance ' + fmtPct(s.pct) + ' %' : s.fase ? ' · fase ' + esc(s.fase) : '') + (s.obs ? ' · ' + esc(s.obs) : '') + '</span></div>' +
       (conAcciones && esAdmin() && !an && !s.pendiente && esHoy(s.fecha) ? '<button class="btn chico sec" data-a="anularSalida" data-v="' + esc(s.id) + '">Anular</button>' : '') + '</div>';
   }
 
@@ -116,9 +133,12 @@
     if (!S.estado.entradas.length) return sinInventario();
     var c = S.calc, t = c.tot;
     var diams = Object.keys(c.porDiam).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
-    var h = '<div class="grid kpis">' +
-      '<div class="kpi ent"><small>Ingresado</small><b class="num">' + kg(t.in_kg) + '</b><span>kg · ' + n0(t.in_p) + ' piezas</span></div>' +
-      '<div class="kpi sal"><small>Salido</small><b class="num">' + kg(t.out_kg) + '</b><span>kg · ' + n0(t.out_p) + ' piezas</span></div>' +
+    var pe = { p: 0, kg: 0 }, ps = { p: 0, kg: 0 }, filtrado = S.per.k !== 'todo';
+    S.estado.pedidos.forEach(function (p) { if (enPer(p.fecha)) { pe.p += p.piezas; pe.kg += p.kg; } });
+    S.estado.salidas.forEach(function (x) { if (x.estado !== 'ANULADA' && enPer(x.fecha)) { ps.p += x.cantidad; ps.kg += x.kg; } });
+    var h = vFiltro() + '<div class="grid kpis">' +
+      '<div class="kpi ent"><small>Ingresado' + (filtrado ? ' en el período' : '') + '</small><b class="num">' + kg(filtrado ? pe.kg : t.in_kg) + '</b><span>kg · ' + n0(filtrado ? pe.p : t.in_p) + ' piezas</span></div>' +
+      '<div class="kpi sal"><small>Salido' + (filtrado ? ' en el período' : '') + '</small><b class="num">' + kg(filtrado ? ps.kg : t.out_kg) + '</b><span>kg · ' + n0(filtrado ? ps.p : t.out_p) + ' piezas</span></div>' +
       '<div class="kpi sdo"><small>Saldo en almacén</small><b class="num">' + kg(t.sal_kg) + '</b><span>kg</span></div>' +
       '<div class="kpi sdo"><small>Piezas en almacén</small><b class="num">' + n0(t.sal_p) + '</b><span>de ' + n0(t.in_p) + ' ingresadas</span></div></div>';
     h += '<div class="grid dos" style="margin-top:14px"><div class="card"><h2>Saldo por tipo de varilla</h2>';
@@ -134,7 +154,7 @@
     });
     h += '</tbody></table></div></div></div>';
     h += '<div class="card"><h2>Por pedido</h2><div class="tw"><table><thead><tr><th>Pedido</th><th>Elemento</th><th>Fecha</th><th class="n">Piezas</th><th class="n">Kg</th></tr></thead><tbody>';
-    S.estado.pedidos.slice().sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; }).forEach(function (p) {
+    S.estado.pedidos.filter(function (p) { return enPer(p.fecha); }).sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; }).forEach(function (p) {
       h += '<tr><td><b>' + esc(p.pedido) + '</b></td><td>' + esc(p.estructura) + '</td><td>' + fecha(p.fecha) + '</td><td class="n">' + n0(p.piezas) + '</td><td class="n">' + kg(p.kg) + '</td></tr>';
     });
     h += '</tbody></table></div></div>';
@@ -183,10 +203,59 @@
     S.estado.entradas.forEach(function (x) { r[x.estructura] = 1; });
     return Object.keys(r).sort();
   }
+  function fmtPct(x) { return Number(x || 0).toLocaleString('es-CO', { maximumFractionDigits: 1 }); }
+  function fasesDe(e) {
+    var seen = {}, r = [];
+    S.estado.salidas.slice().sort(function (a, b) { return a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0; }).forEach(function (x) {
+      if (x.elemento === e && x.fase && !seen[x.fase]) { seen[x.fase] = 1; r.push(x.fase); }
+    });
+    return r;
+  }
+  function pctAcum(e) {
+    var G = {};
+    S.estado.salidas.forEach(function (x) { if (x.elemento === e && x.estado !== 'ANULADA' && x.modo === 'PCT') G[String(x.id).replace(/-\d+$/, '')] = x.pct || 0; });
+    return Object.keys(G).reduce(function (t, k) { return t + G[k]; }, 0);
+  }
+  function tomadoPct(e, d, m) {
+    return S.estado.salidas.reduce(function (t, x) { return t + (x.elemento === e && x.diametro === d && x.marca === m && x.estado !== 'ANULADA' && x.modo === 'PCT' ? x.cantidad : 0); }, 0);
+  }
+  /** Reparte el % de avance de forma proporcional entre las posiciones de la estructura (acumulado, sin pasar del saldo). */
+  function itemsPct(e, p) {
+    var cum = Math.min(100, pctAcum(e) + p), r = [], vistos = {};
+    S.estado.entradas.forEach(function (x) {
+      if (x.estructura !== e) return;
+      var k = x.diametro + '|' + x.marca; if (vistos[k]) return; vistos[k] = 1;
+      var v = S.calc.porMarca[e + '|' + x.diametro + '|' + x.marca]; if (!v) return;
+      var meta = cum >= 100 - 1e-9 ? v.in_p : Math.floor(v.in_p * cum / 100 + 1e-9);
+      var q = Math.max(0, Math.min(v.sal_p, meta - tomadoPct(e, x.diametro, x.marca)));
+      if (q > 0) r.push({ id: '', largo: x.largo || 0, elem: e, diam: x.diametro, pos: x.marca, marca: x.marca, cant: q, kg: C.kgSalida(S.calc, e, x.diametro, q, x.marca) });
+    });
+    return r.sort(function (a, b) { return C.diamOrder(a.diam) - C.diamOrder(b.diam) || cmpMarca(a.marca, b.marca); });
+  }
+  function aplicarPct() {
+    var s = S.sal, p = parseFloat(String(s.pct).replace(',', '.')) || 0, rest = Math.max(0, 100 - pctAcum(s.elem));
+    s.items = s.elem && p > 0 && p <= rest + 1e-9 ? itemsPct(s.elem, p) : [];
+    s.err = p > rest + 1e-9 ? 'Solo falta ' + fmtPct(rest) + ' % para completar la estructura.' : '';
+  }
+  function vBalance(e) {
+    var vistos = {}, filas = [];
+    S.estado.entradas.forEach(function (x) {
+      if (x.estructura !== e) return;
+      var k = x.diametro + '|' + x.marca; if (vistos[k]) return; vistos[k] = 1;
+      var v = S.calc.porMarca[e + '|' + x.diametro + '|' + x.marca]; if (!v) return;
+      filas.push({ marca: x.marca, diam: x.diametro, in_p: v.in_p, pct: tomadoPct(e, x.diametro, x.marca), sal_p: v.sal_p, sal_kg: v.sal_kg });
+    });
+    filas.sort(function (a, b) { return C.diamOrder(a.diam) - C.diamOrder(b.diam) || cmpMarca(a.marca, b.marca); });
+    var quedan = filas.filter(function (f) { return f.sal_p > 0; });
+    return '<div class="balance"><div class="paso-h"><b>' + esc(e) + ' llegó al 100 %</b><button type="button" class="lnk" data-a="cerrarBal">Cerrar</button></div>' +
+      (quedan.length ? '<p class="mut" style="margin:0 0 8px">Esto es lo que queda en almacén por posición:</p><div class="tw"><table><thead><tr><th>Posición</th><th>Varilla</th><th class="n">Ingresó</th><th class="n">Queda</th><th class="n">Kg</th></tr></thead><tbody>' +
+        quedan.map(function (f) { return '<tr><td><b>' + esc(f.marca) + '</b></td><td>' + esc(C.diamLabel(f.diam)) + '</td><td class="n">' + n0(f.in_p) + '</td><td class="n"><b>' + n0(f.sal_p) + '</b></td><td class="n">' + kg(f.sal_kg) + '</td></tr>'; }).join('') + '</tbody></table></div>'
+        : '<p class="mut" style="margin:0">No queda acero de esta estructura en el almacén.</p>') + '</div>';
+  }
   function ajustarSalida() {
     var s = S.sal, es = elemsDisp();
     if (todasElems().indexOf(s.elem) < 0) s.elem = '';
-    if (!s.elem && es.length === 1) s.elem = es[0];
+    if (!s.elem && es.length === 1) { s.elem = es[0]; if (!s.fase) s.fase = fasesDe(s.elem)[0] || ''; }
   }
   function cantEn(e, d, m) { return enCarrito(e, d, m); }
   function piezasSalida(e) {
@@ -232,7 +301,10 @@
     ajustarSalida();
     var s = S.sal, todas = todasElems(), conSaldo = elemsDisp();
     var h = '<div class="card sal"><h2>Registrar salida de acero</h2>';
+    if (s.msg) h += '<div class="okmsg">✓ ' + esc(s.msg) + '</div>';
+    if (s.balElem) h += vBalance(s.balElem);
     if (!conSaldo.length && !s.items.length) return h + '<div class="vacio">No queda acero disponible en el almacén.</div></div>';
+    h += '<div class="seg"><button type="button" class="' + (s.modo === 'pos' ? 'on' : '') + '" data-a="modo" data-v="pos">Por posiciones</button><button type="button" class="' + (s.modo === 'pct' ? 'on' : '') + '" data-a="modo" data-v="pct">Por % de avance</button></div>';
     // Paso 1: cuándo y de dónde
     h += '<section class="paso"><div class="paso-h"><i>1</i><b>Fecha y estructura</b></div><div class="fgrid">' +
       '<div class="fld"><label for="s-fecha">Fecha</label><input id="s-fecha" type="date" max="' + hoyISO() + '" value="' + esc(s.fecha || hoyISO()) + '" data-i="sal.fecha"></div>' +
@@ -241,8 +313,19 @@
         todas.map(function (e) {
           var pz = S.calc.porElem[e] ? S.calc.porElem[e].sal_p : 0, ped = {};
           S.estado.pedidos.forEach(function (p) { if (p.estructura === e) ped[p.pedido] = 1; });
-          return '<option value="' + esc(e) + '"' + (e === s.elem ? ' selected' : '') + (pz > 0 || e === s.elem ? '' : ' disabled') + '>' + esc(e) + ' · pedido ' + esc(Object.keys(ped).join(', ')) + ' · ' + (pz > 0 ? n0(pz) + ' pzs' : 'sin saldo') + '</option>'; }).join('') + '</select></div></div></section>';
-    if (s.elem) {
+          return '<option value="' + esc(e) + '"' + (e === s.elem ? ' selected' : '') + (pz > 0 || e === s.elem ? '' : ' disabled') + '>' + esc(e) + ' · pedido ' + esc(Object.keys(ped).join(', ')) + ' · ' + (pz > 0 ? n0(pz) + ' pzs' : 'sin saldo') + '</option>'; }).join('') + '</select></div>' +
+      (s.modo === 'pos' && s.elem ? '<div class="fld" style="grid-column: 1 / -1"><label for="s-fase">Fase</label><input id="s-fase" type="text" list="fases" maxlength="60" autocomplete="off" placeholder="Ej. Losa de fondo, Muros, Cabezal" value="' + esc(s.fase) + '" data-i="sal.fase"><datalist id="fases">' + fasesDe(s.elem).map(function (f) { return '<option value="' + esc(f) + '">'; }).join('') + '</datalist></div>' : '') +
+      '</div></section>';
+    if (s.elem && s.modo === 'pct') {
+      var ac = pctAcum(s.elem), rest = Math.max(0, 100 - ac);
+      h += '<section class="paso"><div class="paso-h"><i>2</i><b>Porcentaje de avance</b></div>' +
+        '<div class="avance"><div class="av-b"><i style="width:' + Math.min(100, ac) + '%"></i></div><span>Ya salió <b>' + fmtPct(ac) + ' %</b> de la estructura' + (rest <= 0 ? ' · completa' : '') + '</span></div>';
+      if (rest <= 0) h += '<div class="vacio-s">Esta estructura ya está al 100 %.</div>';
+      else h += '<div class="fch">' + [10, 25, 50, 75].filter(function (x) { return x < rest; }).map(function (x) { return '<button type="button" class="fc" data-a="pctset" data-v="' + x + '">' + x + ' %</button>'; }).join('') +
+        '<button type="button" class="fc" data-a="pctset" data-v="' + rest + '">Completar ' + fmtPct(rest) + ' %</button></div>' +
+        '<div class="pctin"><input id="s-pct" type="text" inputmode="decimal" autocomplete="off" placeholder="0" value="' + esc(s.pct) + '" data-i="sal.pct"><span>% de la estructura sale ahora</span></div>';
+      h += '</section>';
+    } else if (s.elem) {
       var todasP = piezasSalida(s.elem), diams = [];
       todasP.forEach(function (p) { if (diams.indexOf(p.diam) < 0) diams.push(p.diam); });
       var q = String(s.q || '').trim().toLowerCase().replace(',', '.');
@@ -343,7 +426,7 @@
 
   function vMovs() {
     var L = movimientos();
-    return '<div class="card"><div class="row2" style="justify-content:space-between"><h2 style="margin:0">Movimientos</h2><button class="btn chico sec" data-a="csv">Descargar CSV</button></div>' +
+    return vFiltro() + '<div class="card"><div class="row2" style="justify-content:space-between"><h2 style="margin:0">Movimientos</h2><button class="btn chico sec" data-a="csv">Descargar CSV</button></div>' +
       (L.length ? L.slice(0, 150).map(function (m) { return vMov(m, true); }).join('') : '<div class="vacio">Sin movimientos</div>') +
       (L.length > 150 ? '<p class="peq mut">Se muestran los 150 más recientes. El CSV trae todo.</p>' : '') +
       (!Api.remoto && esAdmin() ? '<div style="margin-top:14px"><button class="btn chico peligro" data-a="borrarLocal">Borrar datos de prueba de este navegador</button></div>' : '') + '</div>';
@@ -381,8 +464,8 @@
   }
 
   function vista() {
+    if (MODO === 'salidas') return vSalida();
     switch (S.tab) {
-      case 'salida': return vSalida();
       case 'inv': return vInv();
       case 'mov': return vMovs();
       case 'cargar': return vCargar();
@@ -395,7 +478,7 @@
     if (!S.ses) { app.innerHTML = vLogin(); return; }
     S.calc = C.calcular(S.estado);
     var fo = S.focus; S.focus = '';
-    app.innerHTML = '<div class="cab">' + vTop() + vTabs() + '</div>' + vBandas() + '<main>' + vista() + '</main><div class="pie">Almacén de aceros · versión de prueba</div>';
+    app.innerHTML = '<div class="cab">' + vTop() + vTabs() + '</div>' + vBandas() + '<main>' + vista() + '</main><div class="pie">Almacén de aceros · ' + (MODO === 'salidas' ? 'Salidas' : 'Panel de control') + ' · versión de prueba</div>';
     if (fo && $(fo)) { var el = $(fo); el.focus(); try { el.select(); } catch (e) { } }
   }
 
@@ -441,8 +524,9 @@
       if (mal) c.err = 'Complete la marca ' + mal.marca + ' (falta largo o peso del diámetro ' + mal.diametro + ').';
     }
     if (!c.err) {
-      var rep = S.estado.pedidos.filter(function (x) { return x.estructura === p.nombre && (String(x.pedido) === String(c.pedido).trim() || (Math.abs(x.piezas - p.totalPiezas) < 1 && Math.abs(x.kg - p.totalKg) < 0.5)); })[0];
-      if (rep) c.err = 'Este DLI ya está cargado (' + p.nombre + ', pedido ' + rep.pedido + '). No se puede guardar dos veces.';
+      var rep = S.estado.pedidos.filter(function (x) { return x.estructura === p.nombre; })[0];
+      if (!rep) rep = S.cargas.filter(function (x, j) { return j !== i && x.parsed.nombre === p.nombre; })[0] ? { pedido: 'en esta misma lista' } : null;
+      if (rep) c.err = 'Este DLI ya está cargado (' + p.nombre + ', pedido ' + rep.pedido + '). Los DLI son únicos: no se puede repetir.';
     }
     if (c.err) { render(); return; }
     Api.cargarDLI(S.ses, p, c.pedido).then(function (r) {
@@ -456,7 +540,10 @@
 
   function registrarSalida() {
     var s = S.sal, lista = s.items.slice(), actual = null;
-    if (!lista.length) { s.err = 'Elija al menos una pieza.'; s.msg = ''; render(); return; }
+    if (!lista.length) { s.err = s.modo === 'pct' ? 'Escriba el porcentaje de avance.' : 'Elija al menos una pieza.'; s.msg = ''; render(); return; }
+    if (s.modo === 'pos' && !String(s.fase).trim()) { s.err = 'Escriba la fase.'; s.msg = ''; render(); return; }
+    var pctV = s.modo === 'pct' ? (parseFloat(String(s.pct).replace(',', '.')) || 0) : 0, elemSel = s.elem;
+    var llegaA100 = s.modo === 'pct' && pctAcum(elemSel) + pctV >= 100 - 1e-9;
     for (var i = 0; i < lista.length; i++) {
       var err = C.validarSalida(S.calc, lista[i].elem, lista[i].diam, lista[i].cant, lista[i].marca);
       if (err) { s.err = 'Posición ' + lista[i].pos + ': ' + err; s.msg = ''; render(); return; }
@@ -467,12 +554,14 @@
     var totKg = 0, totP = 0; lista.forEach(function (it) { totKg += it.kg; totP += it.cant; });
     var obs = s.obs;
     s.err = ''; s.msg = '';
-    Api.salidaLote(S.ses, { grupo: s.grupo, items: lista.map(function (it) { return { diametro: it.diam, cantidad: it.cant, elemento: it.elem, marca: it.marca }; }), obs: obs, fecha: fch }).then(function (r) {
+    Api.salidaLote(S.ses, { grupo: s.grupo, items: lista.map(function (it) { return { diametro: it.diam, cantidad: it.cant, elemento: it.elem, marca: it.marca }; }), obs: obs, fecha: fch, fase: s.modo === 'pos' ? String(s.fase).trim() : '', modo: s.modo === 'pct' ? 'PCT' : 'POS', pct: pctV }).then(function (r) {
       if (!r.ok) { s.err = r.error; render(); return; }
-      s.obs = ''; s.fecha = ''; s.grupo = ''; s.n = 0; s.items = []; s.q = '';
-      s.msg = 'Salida registrada: ' + n0(totP) + (totP === 1 ? ' pieza' : ' piezas') + ' (≈ ' + kg(totKg) + ' kg).';
-      S.tab = 'panel'; window.scrollTo(0, 0);
-      render(); return enviarCola();
+      s.obs = ''; s.fecha = ''; s.grupo = ''; s.n = 0; s.items = []; s.q = ''; s.pct = '';
+      s.balElem = llegaA100 ? elemSel : '';
+      s.msg = 'Salida registrada: ' + n0(totP) + (totP === 1 ? ' pieza' : ' piezas') + ' (≈ ' + kg(totKg) + ' kg)' + (s.modo === 'pct' ? ' · ' + fmtPct(pctV) + ' % de avance' : '') + '.';
+      window.scrollTo(0, 0);
+      if (Api.remoto) { S.estado = Api.conCola(S.estado); render(); return enviarCola(); }
+      return cargarEstado();
     });
   }
 
@@ -494,6 +583,10 @@
     var el = ev.target.closest('[data-a]'); if (!el) return;
     var a = el.getAttribute('data-a'), v = el.getAttribute('data-v');
     switch (a) {
+      case 'modo': if (S.sal.modo !== v) { S.sal.modo = v; S.sal.items = []; S.sal.pct = ''; S.sal.err = ''; S.sal.msg = ''; S.sal.balElem = ''; } render(); break;
+      case 'pctset': S.sal.pct = String(v); S.sal.msg = ''; aplicarPct(); render(); break;
+      case 'cerrarBal': S.sal.balElem = ''; render(); break;
+      case 'per': S.per.k = v; render(); break;
       case 'tab': S.tab = v; render(); window.scrollTo(0, 0); break;
       case 'refrescar': cargarEstado().then(function () { toast('Actualizado'); }); break;
       case 'salir': Api.salir(); S.ses = null; S.loginErr = ''; render(); break;
@@ -532,7 +625,7 @@
     var f = t.getAttribute('data-f');
     if (f) {
       var p = f.split('.'); S[p[0]][p[1]] = t.value;
-      if (f === 'sal.elem') { S.sal.q = ''; S.sal.fdiam = ''; }
+      if (f === 'sal.elem') { S.sal.q = ''; S.sal.fdiam = ''; S.sal.items = []; S.sal.pct = ''; S.sal.balElem = ''; S.sal.fase = fasesDe(S.sal.elem)[0] || ''; }
       S.sal.err = ''; S.sal.msg = '';
       render(); return;
     }
@@ -556,6 +649,8 @@
     if (i === 'sal.obs') S.sal.obs = t.value;
     else if (i === 'sal.q') { S.sal.q = t.value; S.focus = 's-q'; render(); var e3 = $('s-q'); if (e3) { try { e3.setSelectionRange(e3.value.length, e3.value.length); } catch (x) { } } }
     else if (i === 'sal.fecha') S.sal.fecha = t.value;
+    else if (i === 'sal.fase') S.sal.fase = t.value;
+    else if (i === 'sal.pct') { S.sal.pct = t.value.replace(/[^0-9.,]/g, ''); S.sal.msg = ''; aplicarPct(); S.focus = 's-pct'; render(); var e4 = $('s-pct'); if (e4) { try { e4.setSelectionRange(e4.value.length, e4.value.length); } catch (x) { } } }
     else {
       var m = /^carga\.(\d+)\.pedido$/.exec(i);
       if (m && S.cargas[+m[1]]) S.cargas[+m[1]].pedido = t.value;
@@ -573,7 +668,8 @@
     var nom = $('l-nom').value, pin = $('l-pin').value; S.loginNom = nom;
     Api.login(nom, pin).then(function (r) {
       if (!r.ok) { S.loginErr = r.error; render(); return; }
-      S.ses = r.ses; S.loginErr = ''; S.tab = 'panel';
+      if (MODO === 'dashboard' && r.ses.rol !== 'admin') { Api.salir(); S.loginErr = 'Esta aplicación es solo para el administrador. Use la app de Salidas.'; render(); return; }
+      S.ses = r.ses; S.loginErr = ''; S.tab = MODO === 'salidas' ? 'salida' : 'panel';
       render(); enviarCola().then(cargarEstado);
     });
   });
@@ -583,5 +679,6 @@
 
   // ---------- Inicio ----------
   S.ses = Api.sesion();
+  if (S.ses && MODO === 'dashboard' && S.ses.rol !== 'admin') { Api.salir(); S.ses = null; S.loginErr = 'Esta aplicación es solo para el administrador. Use la app de Salidas.'; }
   if (S.ses) { render(); enviarCola().then(cargarEstado); } else render();
 })();

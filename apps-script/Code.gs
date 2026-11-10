@@ -12,13 +12,13 @@
 var HOJAS = {
   Pedidos: ['loadId', 'pedido', 'estructura', 'descripcion', 'proyecto', 'archivo', 'fecha', 'usuario', 'piezas', 'kg'],
   Entradas: ['loadId', 'pedido', 'estructura', 'marca', 'diametro', 'cantidad', 'largo', 'kgUnit', 'kg', 'fecha'],
-  Salidas: ['id', 'fecha', 'diametro', 'cantidad', 'elemento', 'marca', 'kg', 'usuario', 'obs', 'estado']
+  Salidas: ['id', 'fecha', 'diametro', 'cantidad', 'elemento', 'marca', 'kg', 'usuario', 'obs', 'estado', 'fase', 'modo', 'pct']
 };
 // Columnas que SIEMPRE deben quedar como texto (evita que "1.10" pase a 1.1 o "1/2" a una fecha).
 var TEXTO = {
   Pedidos: ['loadId', 'pedido', 'estructura', 'descripcion', 'proyecto', 'archivo', 'fecha', 'usuario'],
   Entradas: ['loadId', 'pedido', 'estructura', 'marca', 'diametro', 'fecha'],
-  Salidas: ['id', 'fecha', 'diametro', 'elemento', 'marca', 'usuario', 'obs', 'estado']
+  Salidas: ['id', 'fecha', 'diametro', 'elemento', 'marca', 'usuario', 'obs', 'estado', 'fase', 'modo']
 };
 
 /** Ejecutar una vez: crea las hojas y los PIN iniciales (cámbielos luego). */
@@ -70,6 +70,7 @@ function manejar_(req) {
       case 'estado': return { ok: true, rol: rol, estado: leerTodo_() };
       case 'cargarDLI': return rol === 'admin' ? cargarDLI_(req) : { ok: false, error: 'Solo el administrador puede cargar un DLI' };
       case 'salida': return registrarSalida_(req);
+      case 'salidaLote': return registrarSalidaLote_(req);
       case 'anularSalida': return rol === 'admin' ? anularSalida_(req) : { ok: false, error: 'Solo el administrador puede anular' };
       case 'anularCarga': return rol === 'admin' ? anularCarga_(req) : { ok: false, error: 'Solo el administrador puede anular una carga' };
       default: return { ok: false, error: 'Acción desconocida' };
@@ -97,6 +98,21 @@ function asegurarHojas_() {
       sh.getRange(1, 1, 1, HOJAS[nombre].length).setNumberFormat('@');
     }
   });
+  // Migración: hojas creadas antes de agregar columnas nuevas (fase, modo, pct)
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('MIGRADO_V2')) {
+  Object.keys(HOJAS).forEach(function (nombre) {
+    var sh2 = ss.getSheetByName(nombre), cols = HOJAS[nombre];
+    var cab = sh2.getRange(1, 1, 1, cols.length).getValues()[0];
+    var falta = false;
+    cols.forEach(function (c, i) { if (cab[i] !== c) falta = true; });
+    if (falta) {
+      sh2.getRange(1, 1, 1, cols.length).setNumberFormat('@').setValues([cols]).setFontWeight('bold');
+      TEXTO[nombre].forEach(function (col) { sh2.getRange(2, cols.indexOf(col) + 1, sh2.getMaxRows() - 1, 1).setNumberFormat('@'); });
+    }
+  });
+  props.setProperty('MIGRADO_V2', '1');
+  }
   var h1 = ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1');
   if (h1 && ss.getSheets().length > 1 && h1.getLastRow() === 0) ss.deleteSheet(h1);
 }
@@ -127,7 +143,7 @@ function leerTodo_() {
   return {
     pedidos: num(strs(leer_('Pedidos'), ['loadId', 'pedido', 'estructura', 'fecha']), ['piezas', 'kg']),
     entradas: num(strs(leer_('Entradas'), ['loadId', 'pedido', 'estructura', 'marca', 'diametro', 'fecha']), ['cantidad', 'largo', 'kgUnit', 'kg']),
-    salidas: num(strs(leer_('Salidas'), ['id', 'fecha', 'diametro', 'elemento', 'marca', 'estado']), ['cantidad', 'kg'])
+    salidas: num(strs(leer_('Salidas'), ['id', 'fecha', 'diametro', 'elemento', 'marca', 'estado', 'fase', 'modo']), ['cantidad', 'kg', 'pct'])
   };
 }
 
@@ -158,8 +174,9 @@ function cargarDLI_(req) {
   if (!est) return { ok: false, error: 'Falta la estructura' };
   var existentes = leer_('Pedidos');
   for (var i = 0; i < existentes.length; i++) {
-    if (String(existentes[i].pedido) === pedido && String(existentes[i].estructura) === est)
-      return { ok: false, error: 'Ya está cargado el pedido ' + pedido + ' para ' + est };
+    // Un DLI es único: una estructura no puede cargarse dos veces (ni con otro pedido).
+    if (String(existentes[i].estructura) === est)
+      return { ok: false, error: 'Este DLI ya está cargado (' + est + ', pedido ' + existentes[i].pedido + '). No se permite repetirlo.' };
   }
   var loadId = /^[A-Za-z0-9_\-]{1,40}$/.test(String(req.loadId || '')) ? String(req.loadId) : ('L' + new Date().getTime());
   var fecha = ahora_();
@@ -218,7 +235,11 @@ function anularSalida_(req) {
   var ids = sh.getRange(2, 1, n - 1, 1).getValues();
   var col = HOJAS.Salidas.indexOf('estado') + 1;
   for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]) === String(req.id)) { sh.getRange(i + 2, col).setValue('ANULADA'); return { ok: true }; }
+    if (String(ids[i][0]) === String(req.id)) {
+      var fch = String(sh.getRange(i + 2, 2).getValue()).slice(0, 10);
+      if (fch !== ahora_().slice(0, 10)) return { ok: false, error: 'Solo se puede anular una salida el mismo día en que se registró' };
+      sh.getRange(i + 2, col).setValue('ANULADA'); return { ok: true };
+    }
   }
   return { ok: false, error: 'No se encontró la salida' };
 }
@@ -227,6 +248,7 @@ function anularCarga_(req) {
   var estado = leerTodo_();
   var carga = estado.pedidos.filter(function (p) { return p.loadId === String(req.loadId); })[0];
   if (!carga) return { ok: false, error: 'No se encontró la carga' };
+  if (String(carga.fecha).slice(0, 10) !== ahora_().slice(0, 10)) return { ok: false, error: 'Solo se puede anular una carga el mismo día en que se registró' };
   var conSalidas = estado.salidas.some(function (s) { return s.estado !== 'ANULADA' && s.elemento === carga.estructura; });
   if (conSalidas) return { ok: false, error: 'No se puede anular: ' + carga.estructura + ' ya tiene salidas. Anule primero las salidas.' };
   ['Entradas', 'Pedidos'].forEach(function (nombre) {
@@ -235,4 +257,33 @@ function anularCarga_(req) {
     for (var i = n; i >= 2; i--) if (String(sh.getRange(i, 1).getValue()) === String(req.loadId)) sh.deleteRow(i);
   });
   return { ok: true };
+}
+
+/** Varias posiciones en UNA sola llamada: se valida todo y se escribe todo junto (o nada). */
+function registrarSalidaLote_(req) {
+  var items = Array.isArray(req.items) ? req.items : [];
+  if (!items.length) return { ok: false, error: 'No hay piezas en la salida' };
+  if (items.length > 300) return { ok: false, error: 'Demasiadas posiciones en una salida' };
+  var base = /^[A-Za-z0-9_\-]{1,50}$/.test(String(req.grupo || '')) ? String(req.grupo) : ('S' + new Date().getTime());
+  var estado = leerTodo_();
+  for (var i = 0; i < estado.salidas.length; i++) if (estado.salidas[i].id === base + '-1') return { ok: true, repetida: true, id: base };
+  var fecha = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(String(req.fecha || '')) ? String(req.fecha) : ahora_();
+  var usuario = txt_(req.usuario, 60), obs = txt_(req.obs, 120), filas = [];
+  var modo = req.modo === 'PCT' ? 'PCT' : 'POS', fase = txt_(req.fase, 60), pct = modo === 'PCT' ? num_(req.pct || 0, 'porcentaje', 100) : 0;
+  if (modo === 'POS' && Number(req.v) >= 2 && !fase) return { ok: false, error: 'Falta la fase' };
+  for (var n = 0; n < items.length; n++) {
+    var it = items[n] || {};
+    var elemento = txt_(it.elemento, 80), diametro = txt_(it.diametro, 12), marca = txt_(it.marca, 20), cant = Number(it.cantidad);
+    if (!elemento || !diametro) return { ok: false, error: 'Falta la estructura o el diámetro' };
+    if (!(cant > 0) || Math.floor(cant) !== cant) return { ok: false, error: 'La cantidad debe ser un entero mayor que 0' };
+    var pool = saldo_(estado, elemento, diametro, '');
+    if (cant > pool.piezas) return { ok: false, error: 'Solo hay ' + pool.piezas + ' de ' + diametro + '" en ' + elemento };
+    var ref = pool;
+    if (marca) { ref = saldo_(estado, elemento, diametro, marca); if (cant > ref.piezas) return { ok: false, error: 'Solo hay ' + ref.piezas + ' de la posición ' + marca }; }
+    var kg = Math.round((cant >= ref.piezas ? ref.kg : (ref.kg / ref.piezas) * cant) * 1000) / 1000;
+    var fila = { id: base + '-' + (n + 1), fecha: fecha, diametro: diametro, cantidad: cant, elemento: elemento, marca: marca, kg: kg, usuario: usuario, obs: obs, estado: 'ACTIVA', fase: fase, modo: modo, pct: pct };
+    estado.salidas.push(fila); filas.push(fila);
+  }
+  agregar_('Salidas', filas);
+  return { ok: true, grupo: base, filas: filas.length };
 }

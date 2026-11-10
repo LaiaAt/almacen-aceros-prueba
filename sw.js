@@ -1,8 +1,8 @@
 /* Almacén de aceros (prueba) — service worker. Autor: Carlos Eduardo Bermúdez Castro
  * Guarda la app para abrirla sin señal. Las llamadas al servidor (Apps Script) nunca se guardan aquí.
  * Cambie VERSION cada vez que publique una versión nueva para que los celulares la actualicen. */
-var VERSION = 'aceros-v19';
-var ARCHIVOS = ['./', 'index.html', 'style.css', 'core.js', 'config.js', 'api.js', 'app.js', 'sw-registro.js', 'manifest.webmanifest',
+var VERSION = 'aceros-v20';
+var ARCHIVOS = ['./', 'index.html', 'style.css', 'core.js', 'config.js', 'api.js', 'app.js', 'sw-registro.js', 'modo.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
 
 self.addEventListener('install', function (e) {
@@ -10,7 +10,7 @@ self.addEventListener('install', function (e) {
 });
 self.addEventListener('activate', function (e) {
   e.waitUntil(caches.keys().then(function (ks) {
-    return Promise.all(ks.filter(function (k) { return k !== VERSION; }).map(function (k) { return caches.delete(k); }));
+    return Promise.all(ks.filter(function (k) { return k.indexOf('aceros-') === 0 && k !== VERSION; }).map(function (k) { return caches.delete(k); }));
   }).then(function () { return self.clients.claim(); }));
 });
 self.addEventListener('fetch', function (e) {
