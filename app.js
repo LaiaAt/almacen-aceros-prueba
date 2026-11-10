@@ -7,7 +7,7 @@
   var S = {
     ses: null, estado: { pedidos: [], entradas: [], salidas: [] }, calc: null, tab: MODO === 'salidas' ? 'salida' : 'panel', offline: false, enviando: false, per: { k: 'todo', d: '', h: '' },
     sal: { q: '', fdiam: '', items: [], grupo: '', n: 0, diam: '', elem: '', marca: '', pos: '', cant: 1, obs: '', fecha: '', msg: '', err: '', modo: 'pos', tipo: 'SALIDA', fase: '', pct: '', balElem: '' },
-    inv: { vista: 'diametro', elem: '', diam: '' }, ped: { q: '', pag: 0 }, inf: { d: '', ofi: '', ayu: '' },
+    inv: { vista: 'diametro', elem: '', diam: '' }, ped: { q: '', pag: 0 }, inf: { d: '' },
     cargas: [], loginErr: '', loginNom: ''
   };
 
@@ -466,56 +466,72 @@
   function numVar(d) { var n = C.NUMERO[d]; return n || (d ? C.diamLabel(d) : ''); }
   function vInforme() {
     var I = S.inf, dia = I.d || hoyISO();
-    var del = function (x) { return x.estado !== 'ANULADA' && String(x.fecha || '').slice(0, 10) === dia; };
-    var arm = S.estado.salidas.filter(function (x) { return del(x) && tp(x) === 'ARMADO'; });
-    var sal = S.estado.salidas.filter(function (x) { return del(x) && tp(x) === 'SALIDA'; });
-    var ent = S.estado.pedidos.filter(function (p) { return String(p.fecha || '').slice(0, 10) === dia; });
+    var fd = function (x) { return String(x.fecha || '').slice(0, 10); };
+    var act = S.estado.salidas.filter(function (x) { return x.estado !== 'ANULADA'; });
+    var arm = act.filter(function (x) { return fd(x) === dia && tp(x) === 'ARMADO'; });
+    var sal = act.filter(function (x) { return fd(x) === dia && tp(x) === 'SALIDA'; });
     var calc = S.calc || C.calcular(S.estado), tot = function (e) { return (calc.porElem[e] || {}).in_p || 0; };
-    function agrupar(L) {
+    // 1) acero en almacén al iniciar el día (llegó antes de hoy − salió antes de hoy)
+    var ini = {}, hoyEnt = { p: 0, kg: 0 };
+    S.estado.entradas.forEach(function (e) {
+      var f = fd(e);
+      if (f < dia) { var o = ini[e.diametro] || (ini[e.diametro] = { p: 0, kg: 0 }); o.p += +e.cantidad || 0; o.kg += +e.kg || 0; }
+      else if (f === dia) { hoyEnt.p += +e.cantidad || 0; hoyEnt.kg += +e.kg || 0; }
+    });
+    act.forEach(function (x) { if (tp(x) === 'SALIDA' && fd(x) < dia) { var o = ini[x.diametro] || (ini[x.diametro] = { p: 0, kg: 0 }); o.p -= +x.cantidad || 0; o.kg -= +x.kg || 0; } });
+    // 2) de las salidas del día, cuánto salió ya armado y cuánto directo (se simula posición por posición)
+    var run = {}, orig = {};
+    act.slice().sort(function (a, b) { return String(a.fecha) < String(b.fecha) ? -1 : String(a.fecha) > String(b.fecha) ? 1 : String(a.id) < String(b.id) ? -1 : 1; }).forEach(function (x) {
+      var k = x.elemento + '|' + x.diametro + '|' + (x.marca || ''), c = +x.cantidad || 0;
+      if (tp(x) === 'ARMADO') { run[k] = (run[k] || 0) + c; return; }
+      var dA = Math.min(run[k] || 0, c); run[k] = (run[k] || 0) - dA;
+      if (fd(x) === dia) orig[x.id] = [dA, c - dA];
+    });
+    function agrupar(L, modo) {
       var G = {}, ord = [];
       L.forEach(function (x) {
-        var k = x.elemento + '|' + x.diametro;
-        if (!G[k]) { G[k] = { e: x.elemento, d: x.diametro, p: 0, kg: 0, fases: {}, us: {}, pos: {} }; ord.push(k); }
-        var g = G[k]; g.p += +x.cantidad || 0; g.kg += +x.kg || 0;
-        if (x.fase) g.fases[x.fase] = 1; if (x.usuario) g.us[x.usuario] = 1; if (x.marca) g.pos[x.marca] = (g.pos[x.marca] || 0) + (+x.cantidad || 0);
+        var c = +x.cantidad || 0, kgx = +x.kg || 0, partes = modo ? [['Armado', (orig[x.id] || [0, c])[0]], ['Directo', (orig[x.id] || [0, c])[1]]] : [['Armado', c]];
+        partes.forEach(function (pt) {
+          if (!pt[1]) return;
+          var k = x.elemento + '|' + x.diametro + '|' + pt[0];
+          if (!G[k]) { G[k] = { e: x.elemento, d: x.diametro, est: modo ? pt[0] : 'Armado', p: 0, kg: 0, fases: {}, us: {}, pos: {} }; ord.push(k); }
+          var g = G[k]; g.p += pt[1]; g.kg += c ? kgx * pt[1] / c : 0;
+          if (x.fase) g.fases[x.fase] = 1; if (x.usuario) g.us[x.usuario] = 1; if (x.marca) g.pos[x.marca] = (g.pos[x.marca] || 0) + pt[1];
+        });
       });
-      ord.sort(function (a, b) { var x = G[a], y = G[b]; return x.e < y.e ? -1 : x.e > y.e ? 1 : C.diamOrder(x.d) - C.diamOrder(y.d); });
+      ord.sort(function (a, b) { var x = G[a], y = G[b]; return x.e < y.e ? -1 : x.e > y.e ? 1 : C.diamOrder(x.d) - C.diamOrder(y.d) || (x.est < y.est ? -1 : 1); });
       return ord.map(function (k) { return G[k]; });
     }
-    function filas(L, vacio) {
-      var g = agrupar(L);
-      if (!g.length) return '<tr><td colspan="6" class="inf-v">' + vacio + '</td></tr>';
+    function filas(L, vacio, modo) {
+      var g = agrupar(L, modo);
+      if (!g.length) return '<tr><td colspan="7" class="inf-v">' + vacio + '</td></tr>';
       return g.map(function (r) {
         var pc = tot(r.e) ? (100 * r.p / tot(r.e)) : 0;
-        var pos = Object.keys(r.pos).sort(cmpMarca).map(function (m) { return m + '×' + r.pos[m]; }).join(', ');
-        return '<tr><td><b>' + esc(r.e) + '</b>' + (Object.keys(r.fases).length ? '<br><small>' + esc(Object.keys(r.fases).join(', ')) + '</small>' : '') + '</td>' +
-          '<td class="c"><b>' + esc(numVar(r.d)) + '</b></td><td class="c">' + n0(r.p) + (pos ? '<br><small>' + esc(pos) + '</small>' : '') + '</td><td class="c">' + fmtPct(pc) + '%</td><td class="r">' + kg(r.kg) + '</td><td>' + esc(Object.keys(r.us).join(', ')) + '</td></tr>';
+        var pos = Object.keys(r.pos).sort(cmpMarca).join(', ');
+        return '<tr><td class="c"><b>' + r.est + '</b></td><td><b>' + esc(r.e) + '</b>' + (Object.keys(r.fases).length ? '<br><small>Fase: ' + esc(Object.keys(r.fases).join(', ')) + '</small>' : '') + (pos ? '<br><small>Pos.: ' + esc(pos) + '</small>' : '') + '</td>' +
+          '<td class="c"><b>' + esc(numVar(r.d)) + '</b></td><td class="c">' + n0(r.p) + '</td><td class="c">' + fmtPct(pc) + '%</td><td class="r">' + kg(r.kg) + '</td><td>' + esc(Object.keys(r.us).join(', ')) + '</td></tr>';
       }).join('');
     }
-    function resumenVar(L) {
-      var m = {}; L.forEach(function (x) { var o = m[x.diametro] || (m[x.diametro] = { p: 0, kg: 0 }); o.p += +x.cantidad || 0; o.kg += +x.kg || 0; });
-      var ks = Object.keys(m).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
-      if (!ks.length) return '';
-      return '<table class="inf-t"><thead><tr><th>Varilla</th>' + ks.map(function (k) { return '<th class="c">' + esc(numVar(k)) + '</th>'; }).join('') + '<th class="c">Total</th></tr></thead><tbody>' +
-        '<tr><th>Piezas</th>' + ks.map(function (k) { return '<td class="c">' + n0(m[k].p) + '</td>'; }).join('') + '<td class="c"><b>' + n0(ks.reduce(function (a, k) { return a + m[k].p; }, 0)) + '</b></td></tr>' +
-        '<tr><th>Kg</th>' + ks.map(function (k) { return '<td class="c">' + kg(m[k].kg) + '</td>'; }).join('') + '<td class="c"><b>' + kg(ks.reduce(function (a, k) { return a + m[k].kg; }, 0)) + '</b></td></tr></tbody></table>';
-    }
+    var cab = '<thead><tr><th class="c">Estado</th><th>Estructura</th><th class="c">#Varilla</th><th class="c">Cant.</th><th class="c">% estr.</th><th class="r">Kg</th><th>Responsable</th></tr></thead>';
+    function totales(L, modo) { var g = agrupar(L, modo); return '<tr class="inf-tot"><td colspan="3">TOTAL</td><td class="c">' + n0(g.reduce(function (a, r) { return a + r.p; }, 0)) + '</td><td></td><td class="r">' + kg(g.reduce(function (a, r) { return a + r.kg; }, 0)) + '</td><td></td></tr>'; }
+    var ks = Object.keys(ini).filter(function (k) { return ini[k].p > 0; }).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
+    var tI = ks.reduce(function (a, k) { a.p += ini[k].p; a.kg += ini[k].kg; return a; }, { p: 0, kg: 0 });
+    var t1 = ks.length ? '<table class="inf-t"><thead><tr><th>#Varilla</th>' + ks.map(function (k) { return '<th class="c">' + esc(numVar(k)) + '</th>'; }).join('') + '<th class="c">Total</th></tr></thead><tbody>' +
+      '<tr><th>Piezas</th>' + ks.map(function (k) { return '<td class="c">' + n0(ini[k].p) + '</td>'; }).join('') + '<td class="c"><b>' + n0(tI.p) + '</b></td></tr>' +
+      '<tr><th>Kg</th>' + ks.map(function (k) { return '<td class="c">' + kg(ini[k].kg) + '</td>'; }).join('') + '<td class="c"><b>' + kg(tI.kg) + '</b></td></tr></tbody></table>'
+      : '<table class="inf-t"><tr><td class="inf-v">No había acero en el almacén al iniciar el día</td></tr></table>';
+    if (hoyEnt.p) t1 += '<p class="inf-nota">Además llegaron en el día: ' + n0(hoyEnt.p) + ' piezas (' + kg(hoyEnt.kg) + ' kg).</p>';
     var kgArm = arm.reduce(function (a, x) { return a + (+x.kg || 0); }, 0), kgSal = sal.reduce(function (a, x) { return a + (+x.kg || 0); }, 0);
-    var nEst = agrupar(arm).reduce(function (a, r) { a[r.e] = 1; return a; }, {});
+    var nEst = {}; arm.forEach(function (x) { nEst[x.elemento] = 1; });
     var d = dia.split('-'), resp = S.ses ? S.ses.nombre : '';
-    var h = '<div class="card inf-ctl noimp"><h2 style="margin-top:0">Informe del día</h2><div class="row2"><label class="f" style="flex:1;margin:0">Fecha<input type="date" max="' + hoyISO() + '" value="' + esc(dia) + '" data-f="inf.d"></label></div>' +
-      '<div class="row2"><label class="f" style="flex:1;margin:8px 0 0">Oficiales<input type="text" inputmode="numeric" maxlength="3" value="' + esc(I.ofi) + '" data-i="inf.ofi"></label><label class="f" style="flex:1;margin:8px 0 0">Ayudantes<input type="text" inputmode="numeric" maxlength="3" value="' + esc(I.ayu) + '" data-i="inf.ayu"></label></div>' +
-      '<button class="btn" style="margin-top:14px;width:100%" data-a="imprimir">🖨️ Guardar PDF / Imprimir</button><p class="peq mut">En el celular: Imprimir → "Guardar como PDF".</p></div>';
+    var h = '<div class="card inf-ctl noimp"><h2 style="margin-top:0">Informe del día</h2><label class="f" style="margin:0">Fecha<input type="date" max="' + hoyISO() + '" value="' + esc(dia) + '" data-f="inf.d"></label>' +
+      '<button class="btn blk" style="margin-top:14px" data-a="imprimir">🖨️ Guardar PDF / Imprimir</button><p class="peq mut">En el celular: Imprimir → "Guardar como PDF".</p></div>';
     h += '<div class="inf-hoja"><div class="inf-cab"><b>PARTE DIARIO DE PRODUCCIÓN · TALLER DE ACERO</b><span>' + esc(CFG.TITULO) + '</span></div>' +
-      '<table class="inf-t inf-meta"><tr><th>Fecha</th><td>' + d[2] + '/' + d[1] + '/' + d[0] + '</td><th>Oficiales</th><td id="inf-o">' + esc(I.ofi || '—') + '</td><th>Ayudantes</th><td id="inf-a">' + esc(I.ayu || '—') + '</td></tr></table>' +
-      '<div class="inf-sec">Resumen del día</div><table class="inf-t"><tr><th>Estructuras armadas</th><td class="c">' + Object.keys(nEst).length + '</td><th>Acero armado</th><td class="c">' + kg(kgArm) + ' kg</td><th>Acero que salió</th><td class="c">' + kg(kgSal) + ' kg</td></tr></table>' +
-      '<div class="inf-sec">Producción de acero del día · ARMADO por estructura</div>' +
-      '<table class="inf-t"><thead><tr><th>Estructura / fase</th><th class="c">#Varilla</th><th class="c">Cant.</th><th class="c">% estr.</th><th class="r">Kg</th><th>Responsable</th></tr></thead><tbody>' + filas(arm, 'No se registró armado este día') + '</tbody></table>' + resumenVar(arm) +
-      '<div class="inf-sec">Salidas de acero del día</div>' +
-      '<table class="inf-t"><thead><tr><th>Estructura / fase</th><th class="c">#Varilla</th><th class="c">Cant.</th><th class="c">% estr.</th><th class="r">Kg</th><th>Responsable</th></tr></thead><tbody>' + filas(sal, 'No hubo salidas este día') + '</tbody></table>' +
-      '<div class="inf-sec">Entradas de acero del día</div>' +
-      '<table class="inf-t"><thead><tr><th>Pedido</th><th>Estructura</th><th class="c">Piezas</th><th class="r">Kg</th><th>Responsable</th></tr></thead><tbody>' +
-      (ent.length ? ent.map(function (p) { return '<tr><td>' + esc(p.pedido) + '</td><td>' + esc(p.estructura) + '</td><td class="c">' + n0(p.piezas) + '</td><td class="r">' + kg(p.kg) + '</td><td>' + esc(p.usuario) + '</td></tr>'; }).join('') : '<tr><td colspan="5" class="inf-v">No llegó acero este día</td></tr>') + '</tbody></table>' +
+      '<table class="inf-t inf-meta"><tr><th>Fecha</th><td>' + d[2] + '/' + d[1] + '/' + d[0] + '</td><th>Estructuras armadas</th><td class="c">' + Object.keys(nEst).length + '</td><th>Armado</th><td class="c">' + kg(kgArm) + ' kg</td><th>Salió</th><td class="c">' + kg(kgSal) + ' kg</td></tr></table>' +
+      '<p class="inf-nota">Oficiales y ayudantes: ver el Parte diario del día (aplicación de parte diario).</p>' +
+      '<div class="inf-sec">1 · Acero en el almacén al iniciar el día</div>' + t1 +
+      '<div class="inf-sec">2 · Producción de acero del día (armado por estructura)</div><table class="inf-t">' + cab + '<tbody>' + filas(arm, 'No se armó acero este día', false) + (arm.length ? totales(arm, false) : '') + '</tbody></table>' +
+      '<div class="inf-sec">3 · Salida de acero del día (armado que salió o salida directa)</div><table class="inf-t">' + cab + '<tbody>' + filas(sal, 'No salió acero este día', true) + (sal.length ? totales(sal, true) : '') + '</tbody></table>' +
       '<div class="inf-fir"><div><i></i>Responsable: ' + esc(resp) + '</div><div><i></i>Firma</div></div>' +
       '<div class="inf-pie">Generado ' + new Date().toLocaleString('es-CO') + ' · Autor del sistema: Carlos Eduardo Bermúdez Castro</div></div>';
     return h;
@@ -772,8 +788,6 @@
     else if (i === 'ped.q') { S.ped.q = t.value; S.ped.pag = 0; S.focus = 'p-q'; render(); var e5 = $('p-q'); if (e5) { try { e5.setSelectionRange(e5.value.length, e5.value.length); } catch (x) { } } }
     else if (i === 'sal.fecha') S.sal.fecha = t.value;
     else if (i === 'sal.fase') S.sal.fase = t.value;
-    else if (i === 'inf.ofi') { S.inf.ofi = t.value.replace(/\D/g, ''); $('inf-o').textContent = S.inf.ofi || '—'; }
-    else if (i === 'inf.ayu') { S.inf.ayu = t.value.replace(/\D/g, ''); $('inf-a').textContent = S.inf.ayu || '—'; }
     else if (i === 'sal.pct') { S.sal.pct = t.value.replace(/[^0-9.,]/g, ''); S.sal.msg = ''; aplicarPct(); S.focus = 's-pct'; render(); var e4 = $('s-pct'); if (e4) { try { e4.setSelectionRange(e4.value.length, e4.value.length); } catch (x) { } } }
     else {
       var m = /^carga\.(\d+)\.pedido$/.exec(i);

@@ -371,3 +371,8 @@ i.lib { background: #16a34a; } i.arm { background: #f59e0b; } i.out { background
 .dn { width: 130px; }
 .tabs button { flex: 1 0 78px; min-width: 78px; font-size: .68rem; padding: 8px 0 6px; white-space: nowrap; }
 .tabs button em { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+.inf-t td { overflow-wrap: anywhere; word-break: break-word; } .inf-t small { display: block; line-height: 1.25; }
+.inf-nota { margin: 6px 0 0; font-size: .75rem; color: #333; font-style: italic; }
+.inf-tot td { background: #e8f1ec; font-weight: 800; }
+@media print { .inf-nota { font-size: 9pt; } }
