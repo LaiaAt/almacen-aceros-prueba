@@ -1,6 +1,6 @@
 /**
  * Almacén de aceros (prueba) — Backend en Google Apps Script
- * Autor: Carlos Eduardo Bermúdez Castro
+ *
  *
  * Guarda los datos en las hojas Pedidos, Entradas y Salidas del Google Sheet donde se pegue este script.
  * Es un Sheet NUEVO e independiente: no toca Parte diario ni Transportes.

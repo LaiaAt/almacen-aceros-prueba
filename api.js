@@ -1,4 +1,4 @@
-/* Almacén de aceros (prueba) — capa de datos. Autor: Carlos Eduardo Bermúdez Castro
+/* Almacén de aceros (prueba) — capa de datos
  * Dos modos: REMOTO (Google Apps Script, datos compartidos) y LOCAL (solo en este navegador, para pruebas).
  * Las salidas hechas sin señal quedan en una cola y se envían solas al volver la conexión.
  */

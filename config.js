@@ -1,4 +1,4 @@
-/* Almacén de aceros (prueba) — Configuración. Autor: Carlos Eduardo Bermúdez Castro
+/* Almacén de aceros (prueba) — Configuración
  *
  * API_URL: dirección de la "aplicación web" de Google Apps Script (ver README, paso 4).
  * Mientras esté vacía, la app funciona en MODO LOCAL DE PRUEBA: los datos quedan solo en ese celular/navegador.

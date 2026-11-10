@@ -1,6 +1,6 @@
 /*!
  * Almacén de aceros (prueba) — núcleo: lector de archivos .dli (DL-NET) y cálculo de inventario.
- * Autor: Carlos Eduardo Bermúdez Castro
+ *
  * Funciona en el navegador (window.AcerosCore) y en Node (module.exports).
  */
 (function (root, factory) {

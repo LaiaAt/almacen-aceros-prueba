@@ -1,7 +1,7 @@
-/* Almacén de aceros (prueba) — service worker de la app de SALIDAS. Autor: Carlos Eduardo Bermúdez Castro
+/* Almacén de aceros (prueba) — service worker de la app de SALIDAS
  * Guarda la app para abrirla sin señal. Las llamadas al servidor (Apps Script) nunca se guardan aquí.
  * Cambie VERSION cada vez que publique una versión nueva para que los celulares la actualicen. */
-var VERSION = 'salidas-v10';
+var VERSION = 'salidas-v11';
 var ARCHIVOS = ['./', 'index.html', 'sw-registro.js', 'modo.js', '../style.css', '../core.js', '../pdf.js', '../config.js', '../api.js', '../app.js', 'manifest.webmanifest',
   '../icons/icon-192.png', '../icons/icon-512.png', '../icons/icon-maskable-512.png'];
 

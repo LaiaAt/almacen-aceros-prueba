@@ -3,7 +3,6 @@
 App instalable en el celular (PWA) para controlar el acero de la playa de hierros: **entradas desde el .dli**, **salidas por supervisor** y **dashboard**.
 Proyecto independiente: no toca Parte diario ni Transportes.
 
-Autor: Carlos Eduardo Bermúdez Castro
 
 ## Cómo funciona
 

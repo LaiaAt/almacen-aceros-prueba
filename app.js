@@ -1,4 +1,4 @@
-/* Almacén de aceros (prueba) — interfaz. Autor: Carlos Eduardo Bermúdez Castro */
+/* Almacén de aceros (prueba) — interfaz */
 (function () {
   'use strict';
   var C = window.AcerosCore, Api = window.Api, CFG = window.ACEROS_CONFIG;
@@ -521,7 +521,7 @@
       '<p class="peq mut">Parte diario de armado por estructura del día elegido. Personal (oficiales y ayudantes): se toma del Parte diario con la llave del usuario.</p></div>';
   }
   function descargarInforme() {
-    var dia = S.inf.d || hoyISO(), D = datosInforme(dia), P = new MiniPdf('Parte diario de producción - Taller de acero ' + dia, 'Carlos Eduardo Bermúdez Castro');
+    var dia = S.inf.d || hoyISO(), D = datosInforme(dia), P = new MiniPdf('Parte diario de producción - Taller de acero ' + dia);
     var M = 36, AN = 523, FIN = 800, y = 0, VERDE = [0.043, 0.42, 0.227], CLARO = [0.91, 0.945, 0.925], BL = [1, 1, 1], d = dia.split('-');
     var resp = S.ses ? S.ses.nombre : '';
     function pagina() { P.nueva(); y = M; }
@@ -624,7 +624,7 @@
     if (y + 50 > FIN) pagina();
     y += 26; P.linea(M, y, M + 250, y); P.linea(M + 290, y, M + AN, y);
     P.texto(M, y + 11, 'Responsable: ' + resp, 8.5); P.texto(M + 290, y + 11, 'Firma', 8.5);
-    var gen = 'Generado ' + new Date().toLocaleString('es-CO') + ' · Autor del sistema: Carlos Eduardo Bermúdez Castro';
+    var gen = 'Generado ' + new Date().toLocaleString('es-CO') + '';
     P.pages.forEach(function (pg, i) {
       P.cur = pg; P.texto(M, 826, gen, 7, false, [0.35, 0.35, 0.35]);
       var h = 'Hoja ' + (i + 1) + ' de ' + P.pages.length; P.texto(M + AN - P.ancho(h, 7.5), 826, h, 7.5, true);
