@@ -174,7 +174,7 @@
   }
 
   // ---------- Inventario ----------
-  function vacio() { return { in_p: 0, in_kg: 0, out_p: 0, out_kg: 0, sal_p: 0, sal_kg: 0 }; }
+  function vacio() { return { in_p: 0, in_kg: 0, out_p: 0, out_kg: 0, sal_p: 0, sal_kg: 0, arm_p: 0, arm_kg: 0, lib_p: 0, lib_kg: 0 }; }
   function sumar(o, key, p, kg, tipo) {
     const x = o[key] || (o[key] = vacio());
     if (tipo === 'in') { x.in_p += p; x.in_kg += kg; } else { x.out_p += p; x.out_kg += kg; }
@@ -193,7 +193,20 @@
       sumar(porPedido, e.pedido + '|' + e.estructura, e.cantidad, e.kg, 'in');
       tot.in_p += e.cantidad; tot.in_kg += e.kg;
     });
+    // Estados: LIBRE (en almacén sin usar), ARMADO (usado para armar, sigue en almacén), SALIÓ (ya salió de la playa).
+    const run = {}; // por posición: armado vigente y salidas, en orden de registro
     (state.salidas || []).filter((s) => s.estado !== 'ANULADA').forEach((s) => {
+      if (s.tipo === 'ARMADO') {
+        if (!s.marca) return;
+        const k = s.elemento + '|' + s.diametro + '|' + s.marca, r = run[k] || (run[k] = { arm: 0, out: 0 });
+        const inP = (porMarca[k] || vacio()).in_p;
+        r.arm += Math.max(0, Math.min(s.cantidad, inP - r.out - r.arm));
+        return;
+      }
+      if (s.marca) {
+        const k = s.elemento + '|' + s.diametro + '|' + s.marca, r = run[k] || (run[k] = { arm: 0, out: 0 });
+        r.arm -= Math.min(r.arm, s.cantidad); r.out += s.cantidad;
+      }
       sumar(porDiam, s.diametro, s.cantidad, s.kg, 'out');
       sumar(porElem, s.elemento, s.cantidad, s.kg, 'out');
       sumar(porElemDiam, s.elemento + '|' + s.diametro, s.cantidad, s.kg, 'out');
@@ -201,6 +214,17 @@
       tot.out_p += s.cantidad; tot.out_kg += s.kg;
     });
     tot.sal_p = tot.in_p - tot.out_p; tot.sal_kg = r3(tot.in_kg - tot.out_kg);
+    // Armado por posición y suma hacia arriba (diámetro, elemento, elemento+diámetro, total)
+    Object.keys(run).forEach((k) => {
+      const m = porMarca[k]; if (!m || !(m.sal_p > 0)) return;
+      const a = Math.min(run[k].arm, m.sal_p), akg = r3((m.sal_kg / m.sal_p) * a);
+      if (a <= 0) return;
+      const [e, d] = k.split('|');
+      [m, porElemDiam[e + '|' + d], porElem[e], porDiam[d], tot].forEach((x) => { if (x) { x.arm_p += a; x.arm_kg = r3(x.arm_kg + akg); } });
+    });
+    [porDiam, porElem, porElemDiam, porMarca, porPedido, { t: tot }].forEach((mp) => Object.keys(mp).forEach((k) => {
+      const x = mp[k]; x.lib_p = x.sal_p - x.arm_p; x.lib_kg = r3(x.sal_kg - x.arm_kg);
+    }));
     return { porDiam, porElem, porElemDiam, porMarca, porPedido, tot };
   }
 
@@ -232,6 +256,16 @@
     return '';
   }
 
+  /** Valida un armado: solo se puede armar acero LIBRE de esa posición. */
+  function validarArmado(calc, elemento, diametro, cantidad, marca) {
+    if (!elemento) return 'Indique el elemento.';
+    if (!marca) return 'Indique la posición.';
+    if (!(cantidad > 0) || Math.floor(cantidad) !== cantidad) return 'La cantidad debe ser un número entero mayor que 0.';
+    const m = calc.porMarca[elemento + '|' + diametro + '|' + marca] || vacio();
+    if (cantidad > m.lib_p) return 'Solo hay ' + m.lib_p + ' libres de la posición ' + marca + '.';
+    return '';
+  }
+
   /** Convierte un despiece leído en filas de entrada para el inventario. */
   // La posición es el código de cada línea del DLI (marca alfanumérica: 4.06, 2a, 7a.11…).
   function aEntradas(parsed, pedido, loadId, fecha) {
@@ -241,5 +275,5 @@
     }));
   }
 
-  return { PESOS, NUMERO, parseDLI, recalcular, totales, calcular, disponible, kgSalida, validarSalida, aEntradas, diamLabel, diamOrder, normDiam, r2, r3 };
+  return { PESOS, NUMERO, parseDLI, recalcular, totales, calcular, disponible, kgSalida, validarSalida, validarArmado, aEntradas, diamLabel, diamOrder, normDiam, r2, r3 };
 });

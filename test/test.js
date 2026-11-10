@@ -44,5 +44,26 @@ state.salidas[1].estado = 'ANULADA';
 calc = C.calcular(state);
 ok(calc.porDiam['1/2'].sal_p === resto, 'Una salida anulada devuelve el saldo');
 
+// Estados: Libre / Armado / Salió
+{
+  const st = { pedidos: [], entradas: C.aEntradas(p, '203192', 'L1', '2026-11-09'), salidas: [] };
+  let c = C.calcular(st);
+  const m1 = st.entradas.find((x) => x.cantidad >= 4);
+  const k = el + '|' + m1.diametro + '|' + m1.marca;
+  ok(C.validarArmado(c, el, m1.diametro, m1.cantidad + 1, m1.marca) !== '', 'No se puede armar más de lo libre');
+  st.salidas.push({ id: 'A1', estado: 'ACTIVA', tipo: 'ARMADO', diametro: m1.diametro, cantidad: 3, elemento: el, marca: m1.marca, kg: 0 });
+  c = C.calcular(st);
+  ok(c.porMarca[k].arm_p === 3 && c.porMarca[k].lib_p === m1.cantidad - 3 && c.porMarca[k].sal_p === m1.cantidad, 'Armar 3: armado=3, sigue en almacén');
+  ok(c.tot.arm_p === 3 && c.tot.sal_p === 233 && c.tot.lib_p === 230, 'Totales: en almacén 233, armado 3, libre 230');
+  st.salidas.push({ id: 'S9', estado: 'ACTIVA', tipo: 'SALIDA', diametro: m1.diametro, cantidad: 2, elemento: el, marca: m1.marca, kg: C.kgSalida(c, el, m1.diametro, 2, m1.marca) });
+  c = C.calcular(st);
+  ok(c.porMarca[k].arm_p === 1 && c.porMarca[k].out_p === 2 && c.tot.sal_p === 231, 'Sale primero lo armado: armado 3→1, salió 2');
+  st.salidas[1].estado = 'ANULADA';
+  c = C.calcular(st);
+  ok(c.porMarca[k].arm_p === 3 && c.tot.sal_p === 233, 'Anular la salida devuelve lo armado');
+  st.salidas[0].estado = 'ANULADA'; c = C.calcular(st);
+  ok(c.tot.arm_p === 0 && c.tot.lib_p === 233, 'Anular el armado deja todo libre');
+}
+
 console.log(fallos ? '\n' + fallos + ' prueba(s) fallaron' : '\nTodas las pruebas pasaron');
 process.exit(fallos ? 1 : 0);

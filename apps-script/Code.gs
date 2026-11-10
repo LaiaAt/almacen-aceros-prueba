@@ -12,13 +12,13 @@
 var HOJAS = {
   Pedidos: ['loadId', 'pedido', 'estructura', 'descripcion', 'proyecto', 'archivo', 'fecha', 'usuario', 'piezas', 'kg'],
   Entradas: ['loadId', 'pedido', 'estructura', 'marca', 'diametro', 'cantidad', 'largo', 'kgUnit', 'kg', 'fecha'],
-  Salidas: ['id', 'fecha', 'diametro', 'cantidad', 'elemento', 'marca', 'kg', 'usuario', 'obs', 'estado', 'fase', 'modo', 'pct']
+  Salidas: ['id', 'fecha', 'diametro', 'cantidad', 'elemento', 'marca', 'kg', 'usuario', 'obs', 'estado', 'fase', 'modo', 'pct', 'tipo']
 };
 // Columnas que SIEMPRE deben quedar como texto (evita que "1.10" pase a 1.1 o "1/2" a una fecha).
 var TEXTO = {
   Pedidos: ['loadId', 'pedido', 'estructura', 'descripcion', 'proyecto', 'archivo', 'fecha', 'usuario'],
   Entradas: ['loadId', 'pedido', 'estructura', 'marca', 'diametro', 'fecha'],
-  Salidas: ['id', 'fecha', 'diametro', 'elemento', 'marca', 'usuario', 'obs', 'estado', 'fase', 'modo']
+  Salidas: ['id', 'fecha', 'diametro', 'elemento', 'marca', 'usuario', 'obs', 'estado', 'fase', 'modo', 'tipo']
 };
 
 /** Ejecutar una vez: crea las hojas y los PIN iniciales (cámbielos luego). */
@@ -71,7 +71,7 @@ function manejar_(req) {
       case 'cargarDLI': return rol === 'admin' ? cargarDLI_(req) : { ok: false, error: 'Solo el administrador puede cargar un DLI' };
       case 'salida': return registrarSalida_(req);
       case 'salidaLote': return registrarSalidaLote_(req);
-      case 'anularSalida': return rol === 'admin' ? anularSalida_(req) : { ok: false, error: 'Solo el administrador puede anular' };
+      case 'anularSalida': return anularSalida_(req);
       case 'anularCarga': return rol === 'admin' ? anularCarga_(req) : { ok: false, error: 'Solo el administrador puede anular una carga' };
       default: return { ok: false, error: 'Acción desconocida' };
     }
@@ -100,7 +100,7 @@ function asegurarHojas_() {
   });
   // Migración: hojas creadas antes de agregar columnas nuevas (fase, modo, pct)
   var props = PropertiesService.getScriptProperties();
-  if (!props.getProperty('MIGRADO_V2')) {
+  if (!props.getProperty('MIGRADO_V3')) {
   Object.keys(HOJAS).forEach(function (nombre) {
     var sh2 = ss.getSheetByName(nombre), cols = HOJAS[nombre];
     var cab = sh2.getRange(1, 1, 1, cols.length).getValues()[0];
@@ -111,7 +111,7 @@ function asegurarHojas_() {
       TEXTO[nombre].forEach(function (col) { sh2.getRange(2, cols.indexOf(col) + 1, sh2.getMaxRows() - 1, 1).setNumberFormat('@'); });
     }
   });
-  props.setProperty('MIGRADO_V2', '1');
+  props.setProperty('MIGRADO_V3', '1');
   }
   var h1 = ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1');
   if (h1 && ss.getSheets().length > 1 && h1.getLastRow() === 0) ss.deleteSheet(h1);
@@ -143,7 +143,7 @@ function leerTodo_() {
   return {
     pedidos: num(strs(leer_('Pedidos'), ['loadId', 'pedido', 'estructura', 'fecha']), ['piezas', 'kg']),
     entradas: num(strs(leer_('Entradas'), ['loadId', 'pedido', 'estructura', 'marca', 'diametro', 'fecha']), ['cantidad', 'largo', 'kgUnit', 'kg']),
-    salidas: num(strs(leer_('Salidas'), ['id', 'fecha', 'diametro', 'elemento', 'marca', 'estado', 'fase', 'modo']), ['cantidad', 'kg', 'pct'])
+    salidas: num(strs(leer_('Salidas'), ['id', 'fecha', 'diametro', 'elemento', 'marca', 'estado', 'fase', 'modo', 'tipo']), ['cantidad', 'kg', 'pct']).map(function (s) { s.tipo = s.tipo === 'ARMADO' ? 'ARMADO' : 'SALIDA'; return s; })
   };
 }
 
@@ -199,9 +199,21 @@ function saldo_(estado, elemento, diametro, marca) {
     if (e.estructura === elemento && e.diametro === diametro && (!marca || e.marca === marca)) { p += e.cantidad; kg += e.kg; }
   });
   estado.salidas.forEach(function (s) {
-    if (s.estado !== 'ANULADA' && s.elemento === elemento && s.diametro === diametro && (!marca || s.marca === marca)) { p -= s.cantidad; kg -= s.kg; }
+    if (s.estado !== 'ANULADA' && s.tipo !== 'ARMADO' && s.elemento === elemento && s.diametro === diametro && (!marca || s.marca === marca)) { p -= s.cantidad; kg -= s.kg; }
   });
   return { piezas: p, kg: kg };
+}
+
+/** Piezas ARMADAS vigentes de una posición (lo armado sigue en almacén; al salir, sale primero lo armado). */
+function armado_(estado, elemento, diametro, marca) {
+  var inP = 0, arm = 0, out = 0;
+  estado.entradas.forEach(function (e) { if (e.estructura === elemento && e.diametro === diametro && e.marca === marca) inP += e.cantidad; });
+  estado.salidas.forEach(function (s) {
+    if (s.estado === 'ANULADA' || s.elemento !== elemento || s.diametro !== diametro || s.marca !== marca) return;
+    if (s.tipo === 'ARMADO') arm += Math.max(0, Math.min(s.cantidad, inP - out - arm));
+    else { arm -= Math.min(arm, s.cantidad); out += s.cantidad; }
+  });
+  return arm;
 }
 
 function registrarSalida_(req) {
@@ -269,6 +281,7 @@ function registrarSalidaLote_(req) {
   for (var i = 0; i < estado.salidas.length; i++) if (estado.salidas[i].id === base + '-1') return { ok: true, repetida: true, id: base };
   var fecha = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(String(req.fecha || '')) ? String(req.fecha) : ahora_();
   var usuario = txt_(req.usuario, 60), obs = txt_(req.obs, 120), filas = [];
+  var tipo = req.tipo === 'ARMADO' ? 'ARMADO' : 'SALIDA';
   var modo = req.modo === 'PCT' ? 'PCT' : 'POS', fase = txt_(req.fase, 60), pct = modo === 'PCT' ? num_(req.pct || 0, 'porcentaje', 100) : 0;
   if (modo === 'POS' && Number(req.v) >= 2 && !fase) return { ok: false, error: 'Falta la fase' };
   for (var n = 0; n < items.length; n++) {
@@ -279,9 +292,14 @@ function registrarSalidaLote_(req) {
     var pool = saldo_(estado, elemento, diametro, '');
     if (cant > pool.piezas) return { ok: false, error: 'Solo hay ' + pool.piezas + ' de ' + diametro + '" en ' + elemento };
     var ref = pool;
+    if (tipo === 'ARMADO') {
+      if (!marca) return { ok: false, error: 'Falta la posición' };
+      var libres = saldo_(estado, elemento, diametro, marca).piezas - armado_(estado, elemento, diametro, marca);
+      if (cant > libres) return { ok: false, error: 'Solo hay ' + libres + ' libres de la posición ' + marca };
+    }
     if (marca) { ref = saldo_(estado, elemento, diametro, marca); if (cant > ref.piezas) return { ok: false, error: 'Solo hay ' + ref.piezas + ' de la posición ' + marca }; }
     var kg = Math.round((cant >= ref.piezas ? ref.kg : (ref.kg / ref.piezas) * cant) * 1000) / 1000;
-    var fila = { id: base + '-' + (n + 1), fecha: fecha, diametro: diametro, cantidad: cant, elemento: elemento, marca: marca, kg: kg, usuario: usuario, obs: obs, estado: 'ACTIVA', fase: fase, modo: modo, pct: pct };
+    var fila = { id: base + '-' + (n + 1), fecha: fecha, diametro: diametro, cantidad: cant, elemento: elemento, marca: marca, kg: kg, usuario: usuario, obs: obs, estado: 'ACTIVA', fase: fase, modo: modo, pct: pct, tipo: tipo };
     estado.salidas.push(fila); filas.push(fila);
   }
   agregar_('Salidas', filas);
