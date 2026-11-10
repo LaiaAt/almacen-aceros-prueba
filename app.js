@@ -7,7 +7,7 @@
   var S = {
     ses: null, estado: { pedidos: [], entradas: [], salidas: [] }, calc: null, tab: MODO === 'salidas' ? 'salida' : 'panel', offline: false, enviando: false, per: { k: 'todo', d: '', h: '' },
     sal: { q: '', fdiam: '', items: [], grupo: '', n: 0, diam: '', elem: '', marca: '', pos: '', cant: 1, obs: '', fecha: '', msg: '', err: '', modo: 'pos', tipo: 'SALIDA', fase: '', pct: '', balElem: '' },
-    inv: { vista: 'diametro', elem: '', diam: '' }, ped: { q: '', pag: 0 },
+    inv: { vista: 'diametro', elem: '', diam: '' }, ped: { q: '', pag: 0 }, inf: { d: '', ofi: '', ayu: '' },
     cargas: [], loginErr: '', loginNom: ''
   };
 
@@ -85,8 +85,8 @@
 
   function vTabs() {
     var T = MODO === 'salidas'
-      ? [['salida', '✍️', 'Registrar'], ['mov', '🧾', 'Movimientos'], ['inv', '📦', 'Inventario']]
-      : [['panel', '📊', 'Panel'], ['salida', '✍️', 'Registrar'], ['inv', '📦', 'Inventario'], ['mov', '🧾', 'Movimientos'], ['ped', '📋', 'Pedidos'], ['cargar', '📥', 'Cargar DLI']];
+      ? [['salida', '✍️', 'Registrar'], ['mov', '🧾', 'Movimientos'], ['inv', '📦', 'Inventario'], ['inf', '📄', 'Informe']]
+      : [['panel', '📊', 'Panel'], ['salida', '✍️', 'Registrar'], ['inv', '📦', 'Inventario'], ['mov', '🧾', 'Movimientos'], ['ped', '📋', 'Pedidos'], ['inf', '📄', 'Informe'], ['cargar', '📥', 'Cargar DLI']];
     return '<nav class="tabs">' + T.map(function (t) {
       return '<button class="' + (S.tab === t[0] ? 'on' : '') + '" data-a="tab" data-v="' + t[0] + '"><span>' + t[1] + '</span><em>' + t[2] + '</em></button>';
     }).join('') + '</nav>';
@@ -425,6 +425,65 @@
       (!Api.remoto && esAdmin() ? '<div style="margin-top:14px"><button class="btn chico peligro" data-a="borrarLocal">Borrar datos de prueba de este navegador</button></div>' : '') + '</div>';
   }
 
+  // ---------- Informe diario (parte de armado por estructura) ----------
+  function numVar(d) { var n = C.NUMERO[d]; return n || (d ? C.diamLabel(d) : ''); }
+  function vInforme() {
+    var I = S.inf, dia = I.d || hoyISO();
+    var del = function (x) { return x.estado !== 'ANULADA' && String(x.fecha || '').slice(0, 10) === dia; };
+    var arm = S.estado.salidas.filter(function (x) { return del(x) && tp(x) === 'ARMADO'; });
+    var sal = S.estado.salidas.filter(function (x) { return del(x) && tp(x) === 'SALIDA'; });
+    var ent = S.estado.pedidos.filter(function (p) { return String(p.fecha || '').slice(0, 10) === dia; });
+    var calc = S.calc || C.calcular(S.estado), tot = function (e) { return (calc.porElem[e] || {}).in_p || 0; };
+    function agrupar(L) {
+      var G = {}, ord = [];
+      L.forEach(function (x) {
+        var k = x.elemento + '|' + x.diametro;
+        if (!G[k]) { G[k] = { e: x.elemento, d: x.diametro, p: 0, kg: 0, fases: {}, us: {}, pos: {} }; ord.push(k); }
+        var g = G[k]; g.p += +x.cantidad || 0; g.kg += +x.kg || 0;
+        if (x.fase) g.fases[x.fase] = 1; if (x.usuario) g.us[x.usuario] = 1; if (x.marca) g.pos[x.marca] = (g.pos[x.marca] || 0) + (+x.cantidad || 0);
+      });
+      ord.sort(function (a, b) { var x = G[a], y = G[b]; return x.e < y.e ? -1 : x.e > y.e ? 1 : C.diamOrder(x.d) - C.diamOrder(y.d); });
+      return ord.map(function (k) { return G[k]; });
+    }
+    function filas(L, vacio) {
+      var g = agrupar(L);
+      if (!g.length) return '<tr><td colspan="6" class="inf-v">' + vacio + '</td></tr>';
+      return g.map(function (r) {
+        var pc = tot(r.e) ? (100 * r.p / tot(r.e)) : 0;
+        var pos = Object.keys(r.pos).sort(cmpMarca).map(function (m) { return m + '×' + r.pos[m]; }).join(', ');
+        return '<tr><td><b>' + esc(r.e) + '</b>' + (Object.keys(r.fases).length ? '<br><small>' + esc(Object.keys(r.fases).join(', ')) + '</small>' : '') + '</td>' +
+          '<td class="c"><b>' + esc(numVar(r.d)) + '</b></td><td class="c">' + n0(r.p) + (pos ? '<br><small>' + esc(pos) + '</small>' : '') + '</td><td class="c">' + fmtPct(pc) + '%</td><td class="r">' + kg(r.kg) + '</td><td>' + esc(Object.keys(r.us).join(', ')) + '</td></tr>';
+      }).join('');
+    }
+    function resumenVar(L) {
+      var m = {}; L.forEach(function (x) { var o = m[x.diametro] || (m[x.diametro] = { p: 0, kg: 0 }); o.p += +x.cantidad || 0; o.kg += +x.kg || 0; });
+      var ks = Object.keys(m).sort(function (a, b) { return C.diamOrder(a) - C.diamOrder(b); });
+      if (!ks.length) return '';
+      return '<table class="inf-t"><thead><tr><th>Varilla</th>' + ks.map(function (k) { return '<th class="c">' + esc(numVar(k)) + '</th>'; }).join('') + '<th class="c">Total</th></tr></thead><tbody>' +
+        '<tr><th>Piezas</th>' + ks.map(function (k) { return '<td class="c">' + n0(m[k].p) + '</td>'; }).join('') + '<td class="c"><b>' + n0(ks.reduce(function (a, k) { return a + m[k].p; }, 0)) + '</b></td></tr>' +
+        '<tr><th>Kg</th>' + ks.map(function (k) { return '<td class="c">' + kg(m[k].kg) + '</td>'; }).join('') + '<td class="c"><b>' + kg(ks.reduce(function (a, k) { return a + m[k].kg; }, 0)) + '</b></td></tr></tbody></table>';
+    }
+    var kgArm = arm.reduce(function (a, x) { return a + (+x.kg || 0); }, 0), kgSal = sal.reduce(function (a, x) { return a + (+x.kg || 0); }, 0);
+    var nEst = agrupar(arm).reduce(function (a, r) { a[r.e] = 1; return a; }, {});
+    var d = dia.split('-'), resp = S.ses ? S.ses.nombre : '';
+    var h = '<div class="card inf-ctl noimp"><h2 style="margin-top:0">Informe del día</h2><div class="row2"><label class="f" style="flex:1;margin:0">Fecha<input type="date" max="' + hoyISO() + '" value="' + esc(dia) + '" data-f="inf.d"></label></div>' +
+      '<div class="row2"><label class="f" style="flex:1;margin:8px 0 0">Oficiales<input type="text" inputmode="numeric" maxlength="3" value="' + esc(I.ofi) + '" data-i="inf.ofi"></label><label class="f" style="flex:1;margin:8px 0 0">Ayudantes<input type="text" inputmode="numeric" maxlength="3" value="' + esc(I.ayu) + '" data-i="inf.ayu"></label></div>' +
+      '<button class="btn" style="margin-top:14px;width:100%" data-a="imprimir">🖨️ Guardar PDF / Imprimir</button><p class="peq mut">En el celular: Imprimir → "Guardar como PDF".</p></div>';
+    h += '<div class="inf-hoja"><div class="inf-cab"><b>PARTE DIARIO DE PRODUCCIÓN · TALLER DE ACERO</b><span>' + esc(CFG.TITULO) + '</span></div>' +
+      '<table class="inf-t inf-meta"><tr><th>Fecha</th><td>' + d[2] + '/' + d[1] + '/' + d[0] + '</td><th>Oficiales</th><td id="inf-o">' + esc(I.ofi || '—') + '</td><th>Ayudantes</th><td id="inf-a">' + esc(I.ayu || '—') + '</td></tr></table>' +
+      '<div class="inf-sec">Resumen del día</div><table class="inf-t"><tr><th>Estructuras armadas</th><td class="c">' + Object.keys(nEst).length + '</td><th>Acero armado</th><td class="c">' + kg(kgArm) + ' kg</td><th>Acero que salió</th><td class="c">' + kg(kgSal) + ' kg</td></tr></table>' +
+      '<div class="inf-sec">Producción de acero del día · ARMADO por estructura</div>' +
+      '<table class="inf-t"><thead><tr><th>Estructura / fase</th><th class="c">#Varilla</th><th class="c">Cant.</th><th class="c">% estr.</th><th class="r">Kg</th><th>Responsable</th></tr></thead><tbody>' + filas(arm, 'No se registró armado este día') + '</tbody></table>' + resumenVar(arm) +
+      '<div class="inf-sec">Salidas de acero del día</div>' +
+      '<table class="inf-t"><thead><tr><th>Estructura / fase</th><th class="c">#Varilla</th><th class="c">Cant.</th><th class="c">% estr.</th><th class="r">Kg</th><th>Responsable</th></tr></thead><tbody>' + filas(sal, 'No hubo salidas este día') + '</tbody></table>' +
+      '<div class="inf-sec">Entradas de acero del día</div>' +
+      '<table class="inf-t"><thead><tr><th>Pedido</th><th>Estructura</th><th class="c">Piezas</th><th class="r">Kg</th><th>Responsable</th></tr></thead><tbody>' +
+      (ent.length ? ent.map(function (p) { return '<tr><td>' + esc(p.pedido) + '</td><td>' + esc(p.estructura) + '</td><td class="c">' + n0(p.piezas) + '</td><td class="r">' + kg(p.kg) + '</td><td>' + esc(p.usuario) + '</td></tr>'; }).join('') : '<tr><td colspan="5" class="inf-v">No llegó acero este día</td></tr>') + '</tbody></table>' +
+      '<div class="inf-fir"><div><i></i>Responsable: ' + esc(resp) + '</div><div><i></i>Firma</div></div>' +
+      '<div class="inf-pie">Generado ' + new Date().toLocaleString('es-CO') + ' · Autor del sistema: Carlos Eduardo Bermúdez Castro</div></div>';
+    return h;
+  }
+
   var PAG = 15;
   function vPedidos() {
     if (!esAdmin()) return '<div class="card vacio">Solo el administrador ve los pedidos.</div>';
@@ -486,6 +545,7 @@
       case 'mov': return vMovs();
       case 'cargar': return vCargar();
       case 'ped': return vPedidos();
+      case 'inf': return vInforme();
       default: return MODO === 'salidas' ? vSalida() : vPanel();
     }
   }
@@ -621,6 +681,7 @@
       case 'registrarCarga': registrarCarga(+v); break;
       case 'quitarCarga': S.cargas.splice(+v, 1); render(); break;
       case 'csv': descargarCSV(); break;
+      case 'imprimir': window.print(); break;
       case 'enviarCola': enviarCola(); break;
       case 'limpiarErrores': Api.limpiarErroresCola(); render(); break;
       case 'anularSalida':
@@ -674,6 +735,8 @@
     else if (i === 'ped.q') { S.ped.q = t.value; S.ped.pag = 0; S.focus = 'p-q'; render(); var e5 = $('p-q'); if (e5) { try { e5.setSelectionRange(e5.value.length, e5.value.length); } catch (x) { } } }
     else if (i === 'sal.fecha') S.sal.fecha = t.value;
     else if (i === 'sal.fase') S.sal.fase = t.value;
+    else if (i === 'inf.ofi') { S.inf.ofi = t.value.replace(/\D/g, ''); $('inf-o').textContent = S.inf.ofi || '—'; }
+    else if (i === 'inf.ayu') { S.inf.ayu = t.value.replace(/\D/g, ''); $('inf-a').textContent = S.inf.ayu || '—'; }
     else if (i === 'sal.pct') { S.sal.pct = t.value.replace(/[^0-9.,]/g, ''); S.sal.msg = ''; aplicarPct(); S.focus = 's-pct'; render(); var e4 = $('s-pct'); if (e4) { try { e4.setSelectionRange(e4.value.length, e4.value.length); } catch (x) { } } }
     else {
       var m = /^carga\.(\d+)\.pedido$/.exec(i);

@@ -299,3 +299,26 @@ details.pedidos summary { font-weight: 700; color: var(--navy); font-size: 1rem;
 .pd-s .lib { background: var(--libbg); color: #14532d; } .pd-s .arm { background: var(--armbg); color: #78350f; } .pd-s .out { background: var(--outbg); color: #1e3a8a; }
 .pag { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 16px; } .pag span { font-weight: 700; font-size: .92rem; text-align: center; }
 .pag .btn { min-width: 0; padding: 10px 12px; }
+
+/* ---- Informe diario ---- */
+.inf-ctl input{width:100%;padding:12px;border:2px solid #cfd6dd;border-radius:12px;font-size:1.05rem;margin-top:4px}
+.inf-hoja{background:#fff;color:#000;border:2px solid #111;border-radius:6px;padding:10px;margin:0 0 16px;font-size:.8rem;overflow-x:auto}
+.inf-cab{background:#0b6b3a;color:#fff;padding:8px 10px;text-align:center;display:flex;flex-direction:column;gap:2px;font-size:.9rem}
+.inf-cab span{font-size:.72rem;opacity:.9}
+.inf-sec{background:#0b6b3a;color:#fff;font-weight:800;text-align:center;padding:5px;margin:12px 0 0;font-size:.78rem;text-transform:uppercase;letter-spacing:.03em}
+.inf-t{width:100%;border-collapse:collapse;margin:0}
+.inf-t th,.inf-t td{border:1px solid #111;padding:5px 6px;text-align:left;vertical-align:top}
+.inf-t thead th,.inf-t th{background:#e8f1ec;font-size:.72rem;text-transform:uppercase}
+.inf-t .c{text-align:center}.inf-t .r{text-align:right}.inf-t small{color:#444;font-size:.7rem}
+.inf-meta{margin-top:6px}.inf-v{text-align:center;color:#555;font-style:italic;padding:12px}
+.inf-fir{display:flex;gap:30px;margin-top:34px}.inf-fir div{flex:1;border-top:1px solid #111;padding-top:4px;font-size:.78rem}.inf-fir i{display:block;height:0}
+.inf-pie{margin-top:12px;font-size:.65rem;color:#555;text-align:center}
+@media print{
+  @page{size:A4 portrait;margin:10mm}
+  html,body,#app,main{background:#fff!important;min-height:0!important}
+  .cab,.pie,.tabs,.noimp,.banda,#toast,.fper{display:none!important}
+  main{padding:0!important;max-width:none!important}
+  .inf-hoja{border:0;padding:0;margin:0;overflow:visible;font-size:10pt}
+  .inf-t th,.inf-t td{padding:4px 5px}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
